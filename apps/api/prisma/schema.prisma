@@ -1,0 +1,173 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────
+model User {
+  id                     String    @id @default(cuid())
+  username               String    @unique
+  passwordHash           String
+  role                   Role      @default(USER)
+  displayName            String?
+  assignedHospitalId     String?
+  assignedHospital       Hospital? @relation(fields: [assignedHospitalId], references: [id])
+  isActive               Boolean   @default(true)
+  requiresPasswordChange Boolean   @default(false)
+  lastLoginAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  submissions Submission[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+// ─────────────────────────────────────────────
+// HOSPITALS
+// ─────────────────────────────────────────────
+model Hospital {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  shortCode String   @unique
+  address   String?
+  city      String?
+  state     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  submissions Submission[]
+
+  @@map("hospitals")
+}
+
+// ─────────────────────────────────────────────
+// INTERVAL CONFIG
+// ─────────────────────────────────────────────
+model IntervalConfig {
+  id            String       @id @default(cuid())
+  name          String
+  intervalType  IntervalType
+  intervalValue Int
+  startTime     String       // HH:MM in 24h format
+  timezone      String       @default("America/New_York")
+  isActive      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  periods CollectionPeriod[]
+
+  @@map("interval_configs")
+}
+
+enum IntervalType {
+  HOURS
+  DAYS
+  WEEKS
+}
+
+// ─────────────────────────────────────────────
+// COLLECTION PERIODS
+// ─────────────────────────────────────────────
+model CollectionPeriod {
+  id               String         @id @default(cuid())
+  intervalConfigId String
+  intervalConfig   IntervalConfig @relation(fields: [intervalConfigId], references: [id])
+  startedAt        DateTime
+  endedAt          DateTime?      // null = currently active
+  isActive         Boolean        @default(true)
+  archivedAt       DateTime?
+  createdAt        DateTime       @default(now())
+
+  submissions Submission[]
+
+  @@map("collection_periods")
+}
+
+// ─────────────────────────────────────────────
+// SUBMISSIONS
+// ─────────────────────────────────────────────
+model Submission {
+  id                 String           @id @default(cuid())
+  userId             String
+  user               User             @relation(fields: [userId], references: [id])
+  hospitalId         String
+  hospital           Hospital         @relation(fields: [hospitalId], references: [id])
+  collectionPeriodId String
+  collectionPeriod   CollectionPeriod @relation(fields: [collectionPeriodId], references: [id])
+  symptomType        SymptomType
+  severity           Severity?
+  notes              String?
+  submittedAt        DateTime         @default(now())
+
+  @@map("submissions")
+}
+
+enum SymptomType {
+  INTOXICATION
+  STOMACH_ISSUES
+  FLU
+}
+
+enum Severity {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+// ─────────────────────────────────────────────
+// THEME CONFIG (singleton row)
+// ─────────────────────────────────────────────
+model ThemeConfig {
+  id                  String   @id @default(cuid())
+  appName             String   @default("Symptom Tracker")
+  logoUrl             String?
+  primaryColor        String   @default("#2563EB")
+  secondaryColor      String   @default("#10B981")
+  backgroundColor     String   @default("#F9FAFB")
+  textColor           String   @default("#111827")
+  headerBackground    String   @default("#1E3A5F")
+  headerTextColor     String   @default("#FFFFFF")
+  fontFamily          String   @default("Inter")
+  fontSizeBase        Int      @default(16)
+  buttonStyle         String   @default("rounded") // "rounded" | "square" | "pill"
+  cardStyle           String   @default("raised")  // "flat" | "raised" | "bordered"
+  showSeverityField   Boolean  @default(false)
+  showNotesField      Boolean  @default(false)
+  loginMessage        String?
+  dashboardMessage    String?
+  updatedAt           DateTime @updatedAt
+
+  @@map("theme_config")
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG (immutable)
+// ─────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_log")
+}
