@@ -36,10 +36,10 @@ export function AdminDashboard() {
     { label: 'Export Data', to: '/admin/data', icon: '📊' },
   ];
 
-  const SYMPTOM_LABELS: Record<string, { label: string; emoji: string }> = {
-    INTOXICATION: { label: 'Intoxication', emoji: '🍺' },
-    STOMACH_ISSUES: { label: 'Stomach Issues', emoji: '🤢' },
-    FLU: { label: 'Flu', emoji: '🤧' },
+  const PATIENT_LABELS: Record<string, { label: string }> = {
+    ALCOHOL_RELATED: { label: 'Alcohol Related' },
+    VIRUS: { label: 'Virus' },
+    MCI: { label: 'MCI' },
   };
 
   return (
@@ -88,16 +88,13 @@ export function AdminDashboard() {
             {/* Stats grid */}
             {stats && stats.total > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {['INTOXICATION', 'STOMACH_ISSUES', 'FLU'].map((type) => {
-                  const { label, emoji } = SYMPTOM_LABELS[type];
+                {['ALCOHOL_RELATED', 'VIRUS', 'MCI'].map((type) => {
+                  const { label } = PATIENT_LABELS[type];
                   const count = stats.byType[type] ?? 0;
-                  const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
                   return (
                     <div key={type} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 text-center">
-                      <div className="text-3xl mb-2">{emoji}</div>
                       <div className="text-3xl font-bold" style={{ color: theme?.primaryColor }}>{count}</div>
                       <div className="text-sm font-medium text-gray-600 mt-1">{label}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{pct}% of submissions</div>
                     </div>
                   );
                 })}

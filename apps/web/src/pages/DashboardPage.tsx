@@ -4,18 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { submissionsApi, adminHospitalsApi, getErrorMessage } from '../api/client';
 import { Layout } from '../components/Layout';
-import { Hospital, Submission, CollectionPeriod, SymptomType, Severity } from '../types';
+import { Hospital, Submission, CollectionPeriod } from '../types';
 
-const SYMPTOM_OPTIONS: { value: SymptomType; label: string; emoji: string }[] = [
-  { value: 'INTOXICATION', label: 'Intoxication', emoji: '🍺' },
-  { value: 'STOMACH_ISSUES', label: 'Stomach Issues', emoji: '🤢' },
-  { value: 'FLU', label: 'Flu', emoji: '🤧' },
-];
-
-const SEVERITY_OPTIONS: { value: Severity; label: string }[] = [
-  { value: 'MILD', label: 'Mild' },
-  { value: 'MODERATE', label: 'Moderate' },
-  { value: 'SEVERE', label: 'Severe' },
+const PATIENT_TYPES = [
+  { key: 'alcoholRelated' as const, label: 'Alcohol Related' },
+  { key: 'virus' as const, label: 'Virus' },
+  { key: 'mci' as const, label: 'MCI' },
 ];
 
 function useCountdown(period: CollectionPeriod | null, intervalType?: string, intervalValue?: number) {
@@ -60,8 +54,7 @@ export function DashboardPage() {
 
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [selectedHospitalId, setSelectedHospitalId] = useState('');
-  const [selectedSymptom, setSelectedSymptom] = useState<SymptomType | null>(null);
-  const [selectedSeverity, setSelectedSeverity] = useState<Severity | null>(null);
+  const [counts, setCounts] = useState({ alcoholRelated: 0, virus: 0, mci: 0 });
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -87,7 +80,6 @@ export function DashboardPage() {
       setMySubmissions(submissionsData.submissions);
       setPeriod(submissionsData.period);
 
-      // Pre-select assigned hospital
       const assignedHospital = activeHospitals.find((h) => h.id === user?.assignedHospitalId);
       if (assignedHospital && !selectedHospitalId) {
         setSelectedHospitalId(assignedHospital.id);
@@ -104,22 +96,22 @@ export function DashboardPage() {
   }, [loadData]);
 
   const handleSubmit = async () => {
-    if (!selectedSymptom || !selectedHospitalId) return;
+    if (!selectedHospitalId) return;
     setIsSubmitting(true);
     setSubmitError('');
     setSubmitSuccess(false);
 
     try {
       await submissionsApi.submit({
-        symptomType: selectedSymptom,
         hospitalId: selectedHospitalId,
-        ...(theme?.showSeverityField && selectedSeverity ? { severity: selectedSeverity } : {}),
+        alcoholRelated: counts.alcoholRelated,
+        virus: counts.virus,
+        mci: counts.mci,
         ...(theme?.showNotesField && notes.trim() ? { notes: notes.trim() } : {}),
       });
 
       setSubmitSuccess(true);
-      setSelectedSymptom(null);
-      setSelectedSeverity(null);
+      setCounts({ alcoholRelated: 0, virus: 0, mci: 0 });
       setNotes('');
       await loadData();
       setTimeout(() => setSubmitSuccess(false), 4000);
@@ -138,11 +130,14 @@ export function DashboardPage() {
     theme?.buttonStyle === 'pill' ? '9999px' :
     theme?.buttonStyle === 'square' ? '4px' : '8px';
 
-  const summaryByType = {
-    INTOXICATION: mySubmissions.filter((s) => s.symptomType === 'INTOXICATION').length,
-    STOMACH_ISSUES: mySubmissions.filter((s) => s.symptomType === 'STOMACH_ISSUES').length,
-    FLU: mySubmissions.filter((s) => s.symptomType === 'FLU').length,
-  };
+  const totalByType = mySubmissions.reduce(
+    (acc, s) => ({
+      alcoholRelated: acc.alcoholRelated + s.alcoholRelated,
+      virus: acc.virus + s.virus,
+      mci: acc.mci + s.mci,
+    }),
+    { alcoholRelated: 0, virus: 0, mci: 0 }
+  );
 
   if (isLoading) {
     return (
@@ -157,14 +152,12 @@ export function DashboardPage() {
   return (
     <Layout>
       <div className="max-w-lg mx-auto">
-        {/* Dashboard message */}
         {theme?.dashboardMessage && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
             {theme.dashboardMessage}
           </div>
         )}
 
-        {/* Period info */}
         {period && (
           <div className="mb-6 p-4 bg-white rounded-lg shadow-sm border border-gray-100 text-sm text-gray-600">
             <div className="flex justify-between items-center">
@@ -215,57 +208,44 @@ export function DashboardPage() {
             )}
           </div>
 
-          {/* Symptom type */}
+          {/* Patient type counts */}
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: theme?.textColor }}>
-              Symptom Type <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium mb-3" style={{ color: theme?.textColor }}>
+              Patient Counts <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-3 gap-3">
-              {SYMPTOM_OPTIONS.map(({ value, label, emoji }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setSelectedSymptom(value)}
-                  className="flex flex-col items-center justify-center p-4 border-2 transition-all min-h-[80px]"
-                  style={{
-                    borderRadius: btnRadius,
-                    borderColor: selectedSymptom === value ? (theme?.primaryColor ?? '#2563EB') : '#E5E7EB',
-                    backgroundColor: selectedSymptom === value ? `${theme?.primaryColor ?? '#2563EB'}15` : 'white',
-                    color: theme?.textColor,
-                  }}
-                >
-                  <span className="text-2xl mb-1">{emoji}</span>
-                  <span className="text-xs font-medium text-center leading-tight">{label}</span>
-                </button>
+            <div className="space-y-3">
+              {PATIENT_TYPES.map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <span className="text-sm font-medium text-gray-700 w-36">{label}</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCounts((c) => ({ ...c, [key]: Math.max(0, c[key] - 1) }))}
+                      className="w-9 h-9 flex items-center justify-center border-2 border-gray-300 rounded-lg text-lg font-bold text-gray-600 hover:border-gray-400 transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      value={counts[key]}
+                      onChange={(e) => setCounts((c) => ({ ...c, [key]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                      className="w-16 text-center py-2 border border-gray-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2"
+                      style={{ color: theme?.textColor }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCounts((c) => ({ ...c, [key]: c[key] + 1 }))}
+                      className="w-9 h-9 flex items-center justify-center border-2 rounded-lg text-lg font-bold text-white transition-colors"
+                      style={{ backgroundColor: theme?.primaryColor ?? '#2563EB', borderColor: theme?.primaryColor ?? '#2563EB' }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
-
-          {/* Severity (optional, admin-controlled) */}
-          {theme?.showSeverityField && (
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: theme?.textColor }}>
-                Severity
-              </label>
-              <div className="flex gap-2">
-                {SEVERITY_OPTIONS.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setSelectedSeverity(selectedSeverity === value ? null : value)}
-                    className="flex-1 py-2.5 text-sm font-medium border-2 transition-all"
-                    style={{
-                      borderRadius: btnRadius,
-                      borderColor: selectedSeverity === value ? (theme?.primaryColor ?? '#2563EB') : '#E5E7EB',
-                      backgroundColor: selectedSeverity === value ? `${theme?.primaryColor ?? '#2563EB'}15` : 'white',
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Notes (optional, admin-controlled) */}
           {theme?.showNotesField && (
@@ -284,30 +264,27 @@ export function DashboardPage() {
             </div>
           )}
 
-          {/* Errors */}
           {submitError && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {submitError}
             </p>
           )}
 
-          {/* Success */}
           {submitSuccess && (
             <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 font-medium">
               Report submitted successfully!
             </p>
           )}
 
-          {/* Submit button */}
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSubmitting || !selectedSymptom || !selectedHospitalId || !period}
+            disabled={isSubmitting || !selectedHospitalId || !period}
             className="w-full py-4 text-base font-semibold text-white transition-opacity min-h-[56px]"
             style={{
               backgroundColor: theme?.primaryColor ?? '#2563EB',
               borderRadius: btnRadius,
-              opacity: (isSubmitting || !selectedSymptom || !selectedHospitalId || !period) ? 0.5 : 1,
+              opacity: (isSubmitting || !selectedHospitalId || !period) ? 0.5 : 1,
             }}
           >
             {isSubmitting ? 'Submitting…' : 'Submit Report'}
@@ -324,16 +301,15 @@ export function DashboardPage() {
               </Link>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {SYMPTOM_OPTIONS.map(({ value, label, emoji }) => (
-                <div key={value} className="text-center p-3 bg-gray-50 rounded-lg">
-                  <div className="text-xl mb-1">{emoji}</div>
-                  <div className="text-2xl font-bold text-gray-800">{summaryByType[value]}</div>
+              {PATIENT_TYPES.map(({ key, label }) => (
+                <div key={key} className="text-center p-3 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-800">{totalByType[key]}</div>
                   <div className="text-xs text-gray-500 mt-0.5">{label}</div>
                 </div>
               ))}
             </div>
             <p className="text-center text-xs text-gray-400 mt-3">
-              Total: {mySubmissions.length} report{mySubmissions.length !== 1 ? 's' : ''}
+              {mySubmissions.length} report{mySubmissions.length !== 1 ? 's' : ''} submitted this period
             </p>
           </div>
         )}

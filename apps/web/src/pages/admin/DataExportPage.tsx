@@ -4,10 +4,10 @@ import { adminDataApi, adminHospitalsApi } from '../../api/client';
 import { CollectionPeriod, Submission, Hospital } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
 
-const SYMPTOM_LABELS: Record<string, string> = {
-  INTOXICATION: 'Intoxication',
-  STOMACH_ISSUES: 'Stomach Issues',
-  FLU: 'Flu',
+const PATIENT_LABELS: Record<string, string> = {
+  ALCOHOL_RELATED: 'Alcohol Related',
+  VIRUS: 'Virus',
+  MCI: 'MCI',
 };
 
 export function DataExportPage() {
@@ -57,14 +57,16 @@ export function DataExportPage() {
         setTotalPages(data.totalPages);
 
         // Calculate stats from all submissions
-        const byType: Record<string, number> = {};
+        const byType: Record<string, number> = { ALCOHOL_RELATED: 0, VIRUS: 0, MCI: 0 };
         const byHospitalMap: Record<string, { name: string; count: number }> = {};
         for (const s of data.submissions) {
-          byType[s.symptomType] = (byType[s.symptomType] ?? 0) + 1;
+          byType['ALCOHOL_RELATED'] += s.alcoholRelated;
+          byType['VIRUS'] += s.virus;
+          byType['MCI'] += s.mci;
           const hName = s.hospital?.name ?? 'Unknown';
           const hId = s.hospitalId;
           if (!byHospitalMap[hId]) byHospitalMap[hId] = { name: hName, count: 0 };
-          byHospitalMap[hId].count++;
+          byHospitalMap[hId].count += s.alcoholRelated + s.virus + s.mci;
         }
         setStats({ byType, byHospital: Object.values(byHospitalMap) });
       })
@@ -137,15 +139,7 @@ export function DataExportPage() {
                     {hospitals.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Filter by Symptom</label>
-                  <select value={filterSymptom} onChange={(e) => setFilterSymptom(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm">
-                    <option value="">All Types</option>
-                    <option value="INTOXICATION">Intoxication</option>
-                    <option value="STOMACH_ISSUES">Stomach Issues</option>
-                    <option value="FLU">Flu</option>
-                  </select>
-                </div>
+                <div />
               </div>
 
               <div className="flex justify-end">
@@ -162,10 +156,10 @@ export function DataExportPage() {
                   <div className="text-3xl font-bold" style={{ color: theme?.primaryColor }}>{total}</div>
                   <div className="text-xs text-gray-500 mt-1">Total Submissions</div>
                 </div>
-                {['INTOXICATION', 'STOMACH_ISSUES', 'FLU'].map((type) => (
+                {['ALCOHOL_RELATED', 'VIRUS', 'MCI'].map((type) => (
                   <div key={type} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
                     <div className="text-3xl font-bold text-gray-700">{stats.byType[type] ?? 0}</div>
-                    <div className="text-xs text-gray-500 mt-1">{SYMPTOM_LABELS[type]}</div>
+                    <div className="text-xs text-gray-500 mt-1">{PATIENT_LABELS[type]}</div>
                   </div>
                 ))}
               </div>
@@ -180,25 +174,22 @@ export function DataExportPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
-                        {['Submitted At', 'Username', 'Hospital', 'Symptom', 'Severity', 'Notes'].map((h) => (
+                        {['Submitted At', 'Username', 'Hospital', 'Alcohol Related', 'Virus', 'MCI', 'Notes'].map((h) => (
                           <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {submissions.length === 0 ? (
-                        <tr><td colSpan={6} className="text-center py-8 text-gray-400">No submissions for this period / filter.</td></tr>
+                        <tr><td colSpan={7} className="text-center py-8 text-gray-400">No submissions for this period / filter.</td></tr>
                       ) : submissions.map((s) => (
                         <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                           <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{new Date(s.submittedAt).toLocaleString()}</td>
                           <td className="px-4 py-3 font-medium text-gray-800">{s.user?.displayName ?? s.user?.username ?? '—'}</td>
                           <td className="px-4 py-3 text-gray-600">{s.hospital?.shortCode ?? '—'}</td>
-                          <td className="px-4 py-3">
-                            <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
-                              {SYMPTOM_LABELS[s.symptomType] ?? s.symptomType}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">{s.severity ?? '—'}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-gray-700">{s.alcoholRelated}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-gray-700">{s.virus}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-gray-700">{s.mci}</td>
                           <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{s.notes ?? '—'}</td>
                         </tr>
                       ))}

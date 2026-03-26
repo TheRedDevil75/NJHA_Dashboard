@@ -1,6 +1,4 @@
 export type Role = 'ADMIN' | 'USER';
-export type SymptomType = 'INTOXICATION' | 'STOMACH_ISSUES' | 'FLU';
-export type Severity = 'MILD' | 'MODERATE' | 'SEVERE';
 export type IntervalType = 'HOURS' | 'DAYS' | 'WEEKS';
 export type ButtonStyle = 'rounded' | 'square' | 'pill';
 export type CardStyle = 'flat' | 'raised' | 'bordered';
@@ -58,8 +56,9 @@ export interface Submission {
   userId: string;
   hospitalId: string;
   collectionPeriodId: string;
-  symptomType: SymptomType;
-  severity: Severity | null;
+  alcoholRelated: number;
+  virus: number;
+  mci: number;
   notes: string | null;
   submittedAt: string;
   hospital?: Pick<Hospital, 'id' | 'name' | 'shortCode'>;

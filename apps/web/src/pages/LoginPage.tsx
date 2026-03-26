@@ -43,7 +43,7 @@ export function LoginPage() {
         <div
           className="bg-white px-8 py-10 shadow-lg"
           style={{
-            borderRadius: theme?.cardStyle === 'pill' ? '16px' : theme?.cardStyle === 'flat' ? '0' : '12px',
+            borderRadius: theme?.cardStyle === 'flat' ? '0' : '12px',
             border: theme?.cardStyle === 'bordered' ? '1px solid #E5E7EB' : 'none',
             boxShadow: theme?.cardStyle === 'flat' ? 'none' : undefined,
           }}

@@ -7,9 +7,10 @@ import { ApiError } from '../middleware/errorHandler';
 const router = Router();
 
 const submissionSchema = z.object({
-  symptomType: z.enum(['INTOXICATION', 'STOMACH_ISSUES', 'FLU']),
   hospitalId: z.string().min(1),
-  severity: z.enum(['MILD', 'MODERATE', 'SEVERE']).optional(),
+  alcoholRelated: z.number().int().min(0),
+  virus: z.number().int().min(0),
+  mci: z.number().int().min(0),
   notes: z.string().max(1000).optional(),
 });
 
@@ -21,7 +22,7 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
       throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid submission data.', parsed.error.flatten());
     }
 
-    const { symptomType, hospitalId, severity, notes } = parsed.data;
+    const { hospitalId, alcoholRelated, virus, mci, notes } = parsed.data;
 
     // Verify active collection period exists
     const activePeriod = await prisma.collectionPeriod.findFirst({
@@ -42,10 +43,11 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
         userId: req.user!.sub,
         hospitalId,
         collectionPeriodId: activePeriod.id,
-        symptomType,
-        severity: severity ?? null,
+        alcoholRelated,
+        virus,
+        mci,
         notes: notes ?? null,
-        submittedAt: new Date(), // always server-side
+        submittedAt: new Date(),
       },
       include: {
         hospital: { select: { id: true, name: true, shortCode: true } },
@@ -56,7 +58,7 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
       data: {
         userId: req.user!.sub,
         action: 'SUBMISSION_CREATED',
-        details: { submissionId: submission.id, symptomType, hospitalId },
+        details: { submissionId: submission.id, alcoholRelated, virus, mci, hospitalId },
         ipAddress: req.ip,
       },
     });

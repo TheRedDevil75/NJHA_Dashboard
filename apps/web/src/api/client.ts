@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import {
   User, Hospital, CollectionPeriod, IntervalConfig,
-  Submission, ThemeConfig, AuditLog, SymptomType, Severity
+  Submission, ThemeConfig, AuditLog,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -82,9 +82,10 @@ export const themeApi = {
 // ── Submissions ──────────────────────────────────────────────
 export const submissionsApi = {
   submit: async (payload: {
-    symptomType: SymptomType;
     hospitalId: string;
-    severity?: Severity;
+    alcoholRelated: number;
+    virus: number;
+    mci: number;
     notes?: string;
   }) => {
     const { data } = await http.post<{ submission: Submission }>('/submissions', payload);

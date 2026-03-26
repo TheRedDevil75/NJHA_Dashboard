@@ -41,16 +41,16 @@ router.get('/current', async (_req: Request, res: Response, next: NextFunction) 
     });
 
     const byType = {
-      INTOXICATION: submissions.filter((s) => s.symptomType === 'INTOXICATION').length,
-      STOMACH_ISSUES: submissions.filter((s) => s.symptomType === 'STOMACH_ISSUES').length,
-      FLU: submissions.filter((s) => s.symptomType === 'FLU').length,
+      ALCOHOL_RELATED: submissions.reduce((sum, s) => sum + s.alcoholRelated, 0),
+      VIRUS: submissions.reduce((sum, s) => sum + s.virus, 0),
+      MCI: submissions.reduce((sum, s) => sum + s.mci, 0),
     };
 
     const byHospital: Record<string, { name: string; count: number }> = {};
     for (const s of submissions) {
       const key = s.hospital.id;
       if (!byHospital[key]) byHospital[key] = { name: s.hospital.name, count: 0 };
-      byHospital[key].count++;
+      byHospital[key].count += s.alcoholRelated + s.virus + s.mci;
     }
 
     // Top 5 users

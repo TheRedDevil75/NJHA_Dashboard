@@ -1,4 +1,4 @@
-import { CollectionPeriod, Submission, SymptomType, Severity } from '@prisma/client';
+import { CollectionPeriod, Submission } from '@prisma/client';
 
 type SubmissionWithRelations = Submission & {
   user: { username: string; displayName: string | null };
@@ -34,8 +34,9 @@ export function buildCsv(
     'user_display_name',
     'hospital_name',
     'hospital_short_code',
-    'symptom_type',
-    'severity',
+    'alcohol_related',
+    'virus',
+    'mci',
     'notes',
   ];
 
@@ -49,8 +50,9 @@ export function buildCsv(
     escapeCsvField(s.user.displayName),
     escapeCsvField(s.hospital.name),
     escapeCsvField(s.hospital.shortCode),
-    escapeCsvField(s.symptomType as string),
-    escapeCsvField(s.severity as string | null),
+    escapeCsvField(String(s.alcoholRelated)),
+    escapeCsvField(String(s.virus)),
+    escapeCsvField(String(s.mci)),
     escapeCsvField(s.notes),
   ]);
 

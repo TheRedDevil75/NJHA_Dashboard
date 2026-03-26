@@ -111,24 +111,13 @@ model Submission {
   hospital           Hospital         @relation(fields: [hospitalId], references: [id])
   collectionPeriodId String
   collectionPeriod   CollectionPeriod @relation(fields: [collectionPeriodId], references: [id])
-  symptomType        SymptomType
-  severity           Severity?
+  alcoholRelated     Int              @default(0)
+  virus              Int              @default(0)
+  mci                Int              @default(0)
   notes              String?
   submittedAt        DateTime         @default(now())
 
   @@map("submissions")
-}
-
-enum SymptomType {
-  INTOXICATION
-  STOMACH_ISSUES
-  FLU
-}
-
-enum Severity {
-  MILD
-  MODERATE
-  SEVERE
 }
 
 // ─────────────────────────────────────────────

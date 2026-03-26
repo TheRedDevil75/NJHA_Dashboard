@@ -4,18 +4,6 @@ import { submissionsApi } from '../api/client';
 import { Submission } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
-const SYMPTOM_LABELS: Record<string, string> = {
-  INTOXICATION: 'Intoxication',
-  STOMACH_ISSUES: 'Stomach Issues',
-  FLU: 'Flu',
-};
-
-const SEVERITY_LABELS: Record<string, string> = {
-  MILD: 'Mild',
-  MODERATE: 'Moderate',
-  SEVERE: 'Severe',
-};
-
 export function MySubmissionsPage() {
   const { theme } = useTheme();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -64,23 +52,15 @@ export function MySubmissionsPage() {
                 className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row sm:items-center gap-3"
               >
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-block px-2 py-0.5 rounded text-xs font-semibold text-white"
-                      style={{ backgroundColor: theme?.primaryColor ?? '#2563EB' }}
-                    >
-                      {SYMPTOM_LABELS[s.symptomType] ?? s.symptomType}
-                    </span>
-                    {s.severity && (
-                      <span className="text-xs text-gray-500 border border-gray-200 rounded px-2 py-0.5">
-                        {SEVERITY_LABELS[s.severity]}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm font-medium text-gray-700 mt-1">
+                  <p className="text-sm font-medium text-gray-700">
                     {s.hospital?.name ?? '—'}
                     <span className="text-gray-400 font-normal"> ({s.hospital?.shortCode})</span>
                   </p>
+                  <div className="flex gap-3 mt-1 text-xs text-gray-600">
+                    <span>Alcohol Related: <strong>{s.alcoholRelated}</strong></span>
+                    <span>Virus: <strong>{s.virus}</strong></span>
+                    <span>MCI: <strong>{s.mci}</strong></span>
+                  </div>
                   {s.notes && (
                     <p className="text-xs text-gray-500 mt-0.5 italic">"{s.notes}"</p>
                   )}
