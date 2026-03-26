@@ -6,12 +6,14 @@ import rateLimit from 'express-rate-limit';
 
 import authRouter from './routes/auth';
 import submissionsRouter from './routes/submissions';
+import fieldsRouter from './routes/fields';
 import adminUsersRouter from './routes/admin/users';
 import adminHospitalsRouter from './routes/admin/hospitals';
 import adminIntervalsRouter from './routes/admin/intervals';
 import adminThemeRouter from './routes/admin/theme';
 import adminDataRouter from './routes/admin/data';
 import adminAuditRouter from './routes/admin/audit';
+import adminFieldsRouter from './routes/admin/fields';
 import { errorHandler } from './middleware/errorHandler';
 import { startScheduler } from './scheduler/periodScheduler';
 
@@ -50,12 +52,14 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth', authRouter);
 app.use('/api/submissions', submissionsRouter);
+app.use('/api/fields', fieldsRouter);
 app.use('/api/admin/users', adminUsersRouter);
 app.use('/api/admin/hospitals', adminHospitalsRouter);
 app.use('/api/admin/intervals', adminIntervalsRouter);
 app.use('/api/admin/theme', adminThemeRouter);
 app.use('/api/admin/data', adminDataRouter);
 app.use('/api/admin/audit', adminAuditRouter);
+app.use('/api/admin/fields', adminFieldsRouter);
 
 // ── Health check ──────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));

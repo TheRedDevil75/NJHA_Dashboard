@@ -51,16 +51,31 @@ export interface IntervalConfig {
   _count?: { periods: number };
 }
 
+export interface PatientField {
+  id: string;
+  label: string;
+  key: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  _count?: { values: number };
+}
+
+export interface SubmissionValue {
+  id: string;
+  fieldId: string;
+  value: number;
+  field?: PatientField;
+}
+
 export interface Submission {
   id: string;
   userId: string;
   hospitalId: string;
   collectionPeriodId: string;
-  alcoholRelated: number;
-  virus: number;
-  mci: number;
   notes: string | null;
   submittedAt: string;
+  values: SubmissionValue[];
   hospital?: Pick<Hospital, 'id' | 'name' | 'shortCode'>;
   user?: Pick<User, 'id' | 'username' | 'displayName'>;
 }

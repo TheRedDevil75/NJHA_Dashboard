@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminLayout } from '../../components/Layout';
-import { adminDataApi, adminIntervalsApi } from '../../api/client';
-import { CollectionPeriod } from '../../types';
+import { adminDataApi } from '../../api/client';
+import { CollectionPeriod, PatientField } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
 
 interface Stats {
@@ -15,14 +15,16 @@ interface Stats {
 export function AdminDashboard() {
   const { theme } = useTheme();
   const [period, setPeriod] = useState<CollectionPeriod | null>(null);
+  const [fields, setFields] = useState<PatientField[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     adminDataApi.current()
-      .then(({ period, stats }) => {
+      .then(({ period, fields, stats }) => {
         setPeriod(period);
+        setFields(fields);
         setStats(stats);
       })
       .catch(() => setError('Failed to load dashboard data.'))
@@ -32,15 +34,9 @@ export function AdminDashboard() {
   const QUICK_LINKS = [
     { label: 'Add User', to: '/admin/users', icon: '👤' },
     { label: 'Add Hospital', to: '/admin/hospitals', icon: '🏥' },
-    { label: 'Manage Intervals', to: '/admin/intervals', icon: '⏰' },
+    { label: 'Patient Fields', to: '/admin/fields', icon: '📋' },
     { label: 'Export Data', to: '/admin/data', icon: '📊' },
   ];
-
-  const PATIENT_LABELS: Record<string, { label: string }> = {
-    ALCOHOL_RELATED: { label: 'Alcohol Related' },
-    VIRUS: { label: 'Virus' },
-    MCI: { label: 'MCI' },
-  };
 
   return (
     <AdminLayout>
@@ -85,19 +81,20 @@ export function AdminDashboard() {
               )}
             </div>
 
-            {/* Stats grid */}
-            {stats && stats.total > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {['ALCOHOL_RELATED', 'VIRUS', 'MCI'].map((type) => {
-                  const { label } = PATIENT_LABELS[type];
-                  const count = stats.byType[type] ?? 0;
-                  return (
-                    <div key={type} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 text-center">
-                      <div className="text-3xl font-bold" style={{ color: theme?.primaryColor }}>{count}</div>
-                      <div className="text-sm font-medium text-gray-600 mt-1">{label}</div>
+            {/* Stats grid — dynamic per PatientField */}
+            {stats && stats.total > 0 && fields.length > 0 && (
+              <div
+                className="grid gap-4"
+                style={{ gridTemplateColumns: `repeat(${Math.min(fields.length, 4)}, minmax(0, 1fr))` }}
+              >
+                {fields.map((field) => (
+                  <div key={field.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 text-center">
+                    <div className="text-3xl font-bold" style={{ color: theme?.primaryColor }}>
+                      {stats.byType[field.key] ?? 0}
                     </div>
-                  );
-                })}
+                    <div className="text-sm font-medium text-gray-600 mt-1">{field.label}</div>
+                  </div>
+                ))}
               </div>
             )}
 

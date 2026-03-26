@@ -101,6 +101,23 @@ model CollectionPeriod {
 }
 
 // ─────────────────────────────────────────────
+// PATIENT FIELDS (dynamic count field definitions)
+// ─────────────────────────────────────────────
+model PatientField {
+  id        String   @id @default(cuid())
+  label     String
+  key       String   @unique
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  values SubmissionValue[]
+
+  @@map("patient_fields")
+}
+
+// ─────────────────────────────────────────────
 // SUBMISSIONS
 // ─────────────────────────────────────────────
 model Submission {
@@ -111,13 +128,24 @@ model Submission {
   hospital           Hospital         @relation(fields: [hospitalId], references: [id])
   collectionPeriodId String
   collectionPeriod   CollectionPeriod @relation(fields: [collectionPeriodId], references: [id])
-  alcoholRelated     Int              @default(0)
-  virus              Int              @default(0)
-  mci                Int              @default(0)
   notes              String?
   submittedAt        DateTime         @default(now())
 
+  values SubmissionValue[]
+
   @@map("submissions")
+}
+
+model SubmissionValue {
+  id           String       @id @default(cuid())
+  submissionId String
+  submission   Submission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fieldId      String
+  field        PatientField @relation(fields: [fieldId], references: [id])
+  value        Int          @default(0)
+
+  @@unique([submissionId, fieldId])
+  @@map("submission_values")
 }
 
 // ─────────────────────────────────────────────

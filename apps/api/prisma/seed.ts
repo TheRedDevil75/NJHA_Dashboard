@@ -63,7 +63,22 @@ async function main() {
     }
   }
 
-  // ── 4. Default theme config (singleton) ───────────────────
+  // ── 4. Default patient fields ──────────────────────────────
+  const existingFields = await prisma.patientField.count();
+  if (existingFields > 0) {
+    console.log('Patient fields already exist — skipping.');
+  } else {
+    await prisma.patientField.createMany({
+      data: [
+        { label: 'Alcohol Related', key: 'alcohol_related', sortOrder: 0 },
+        { label: 'Virus',           key: 'virus',           sortOrder: 1 },
+        { label: 'MCI',             key: 'mci',             sortOrder: 2 },
+      ],
+    });
+    console.log('✅ Default patient fields created.');
+  }
+
+  // ── 5. Default theme config (singleton) ───────────────────
   const existingTheme = await prisma.themeConfig.findFirst();
   if (existingTheme) {
     console.log('Theme config already exists — skipping.');

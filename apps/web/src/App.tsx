@@ -12,6 +12,7 @@ import { IntervalSettingsPage } from './pages/admin/IntervalSettingsPage';
 import { ThemeSettingsPage } from './pages/admin/ThemeSettingsPage';
 import { DataExportPage } from './pages/admin/DataExportPage';
 import { AuditLogPage } from './pages/admin/AuditLogPage';
+import { PatientFieldsPage } from './pages/admin/PatientFieldsPage';
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/admin/theme" element={<RequireAdmin><ThemeSettingsPage /></RequireAdmin>} />
       <Route path="/admin/data" element={<RequireAdmin><DataExportPage /></RequireAdmin>} />
       <Route path="/admin/audit" element={<RequireAdmin><AuditLogPage /></RequireAdmin>} />
+      <Route path="/admin/fields" element={<RequireAdmin><PatientFieldsPage /></RequireAdmin>} />
 
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />

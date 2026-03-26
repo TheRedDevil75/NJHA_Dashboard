@@ -2,15 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { submissionsApi, adminHospitalsApi, getErrorMessage } from '../api/client';
+import { submissionsApi, adminHospitalsApi, fieldsApi, getErrorMessage } from '../api/client';
 import { Layout } from '../components/Layout';
-import { Hospital, Submission, CollectionPeriod } from '../types';
-
-const PATIENT_TYPES = [
-  { key: 'alcoholRelated' as const, label: 'Alcohol Related' },
-  { key: 'virus' as const, label: 'Virus' },
-  { key: 'mci' as const, label: 'MCI' },
-];
+import { Hospital, Submission, CollectionPeriod, PatientField } from '../types';
 
 function useCountdown(period: CollectionPeriod | null, intervalType?: string, intervalValue?: number) {
   const [timeLeft, setTimeLeft] = useState('');
@@ -53,8 +47,9 @@ export function DashboardPage() {
   const { theme } = useTheme();
 
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [fields, setFields] = useState<PatientField[]>([]);
   const [selectedHospitalId, setSelectedHospitalId] = useState('');
-  const [counts, setCounts] = useState({ alcoholRelated: 0, virus: 0, mci: 0 });
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -71,14 +66,25 @@ export function DashboardPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [hospitalsData, submissionsData] = await Promise.all([
+      const [hospitalsData, submissionsData, fieldsData] = await Promise.all([
         adminHospitalsApi.list(),
         submissionsApi.mySubmissions(),
+        fieldsApi.list(),
       ]);
       const activeHospitals = hospitalsData.filter((h) => h.isActive);
       setHospitals(activeHospitals);
       setMySubmissions(submissionsData.submissions);
       setPeriod(submissionsData.period);
+      setFields(fieldsData);
+
+      // Initialize counts for any new fields
+      setCounts((prev) => {
+        const next: Record<string, number> = {};
+        for (const f of fieldsData) {
+          next[f.id] = prev[f.id] ?? 0;
+        }
+        return next;
+      });
 
       const assignedHospital = activeHospitals.find((h) => h.id === user?.assignedHospitalId);
       if (assignedHospital && !selectedHospitalId) {
@@ -104,14 +110,12 @@ export function DashboardPage() {
     try {
       await submissionsApi.submit({
         hospitalId: selectedHospitalId,
-        alcoholRelated: counts.alcoholRelated,
-        virus: counts.virus,
-        mci: counts.mci,
+        values: fields.map((f) => ({ fieldId: f.id, value: counts[f.id] ?? 0 })),
         ...(theme?.showNotesField && notes.trim() ? { notes: notes.trim() } : {}),
       });
 
       setSubmitSuccess(true);
-      setCounts({ alcoholRelated: 0, virus: 0, mci: 0 });
+      setCounts(Object.fromEntries(fields.map((f) => [f.id, 0])));
       setNotes('');
       await loadData();
       setTimeout(() => setSubmitSuccess(false), 4000);
@@ -130,14 +134,14 @@ export function DashboardPage() {
     theme?.buttonStyle === 'pill' ? '9999px' :
     theme?.buttonStyle === 'square' ? '4px' : '8px';
 
-  const totalByType = mySubmissions.reduce(
-    (acc, s) => ({
-      alcoholRelated: acc.alcoholRelated + s.alcoholRelated,
-      virus: acc.virus + s.virus,
-      mci: acc.mci + s.mci,
-    }),
-    { alcoholRelated: 0, virus: 0, mci: 0 }
-  );
+  // Aggregate totals by fieldId across all my submissions
+  const totalByField: Record<string, number> = {};
+  for (const f of fields) {
+    totalByField[f.id] = mySubmissions.reduce((sum, s) => {
+      const v = s.values.find((sv) => sv.fieldId === f.id);
+      return sum + (v?.value ?? 0);
+    }, 0);
+  }
 
   if (isLoading) {
     return (
@@ -208,44 +212,52 @@ export function DashboardPage() {
             )}
           </div>
 
-          {/* Patient type counts */}
-          <div>
-            <label className="block text-sm font-medium mb-3" style={{ color: theme?.textColor }}>
-              Patient Counts <span className="text-red-500">*</span>
-            </label>
-            <div className="space-y-3">
-              {PATIENT_TYPES.map(({ key, label }) => (
-                <div key={key} className="flex items-center justify-between gap-4">
-                  <span className="text-sm font-medium text-gray-700 w-36">{label}</span>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCounts((c) => ({ ...c, [key]: Math.max(0, c[key] - 1) }))}
-                      className="w-9 h-9 flex items-center justify-center border-2 border-gray-300 rounded-lg text-lg font-bold text-gray-600 hover:border-gray-400 transition-colors"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      min={0}
-                      value={counts[key]}
-                      onChange={(e) => setCounts((c) => ({ ...c, [key]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                      className="w-16 text-center py-2 border border-gray-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2"
-                      style={{ color: theme?.textColor }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setCounts((c) => ({ ...c, [key]: c[key] + 1 }))}
-                      className="w-9 h-9 flex items-center justify-center border-2 rounded-lg text-lg font-bold text-white transition-colors"
-                      style={{ backgroundColor: theme?.primaryColor ?? '#2563EB', borderColor: theme?.primaryColor ?? '#2563EB' }}
-                    >
-                      +
-                    </button>
+          {/* Patient count fields (dynamic) */}
+          {fields.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium mb-3" style={{ color: theme?.textColor }}>
+                Patient Counts <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-3">
+                {fields.map((field) => (
+                  <div key={field.id} className="flex items-center justify-between gap-4">
+                    <span className="text-sm font-medium text-gray-700 w-36">{field.label}</span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setCounts((c) => ({ ...c, [field.id]: Math.max(0, (c[field.id] ?? 0) - 1) }))}
+                        className="w-9 h-9 flex items-center justify-center border-2 border-gray-300 rounded-lg text-lg font-bold text-gray-600 hover:border-gray-400 transition-colors"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min={0}
+                        value={counts[field.id] ?? 0}
+                        onChange={(e) => setCounts((c) => ({ ...c, [field.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                        className="w-16 text-center py-2 border border-gray-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2"
+                        style={{ color: theme?.textColor }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCounts((c) => ({ ...c, [field.id]: (c[field.id] ?? 0) + 1 }))}
+                        className="w-9 h-9 flex items-center justify-center border-2 rounded-lg text-lg font-bold text-white transition-colors"
+                        style={{ backgroundColor: theme?.primaryColor ?? '#2563EB', borderColor: theme?.primaryColor ?? '#2563EB' }}
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {fields.length === 0 && (
+            <p className="text-sm text-gray-400">
+              No patient count fields configured. Ask your administrator to add fields.
+            </p>
+          )}
 
           {/* Notes (optional, admin-controlled) */}
           {theme?.showNotesField && (
@@ -292,7 +304,7 @@ export function DashboardPage() {
         </div>
 
         {/* My submissions summary */}
-        {mySubmissions.length > 0 && (
+        {mySubmissions.length > 0 && fields.length > 0 && (
           <div className="mt-6 bg-white rounded-xl shadow-sm p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-semibold text-gray-700">My Submissions This Period</h3>
@@ -300,11 +312,11 @@ export function DashboardPage() {
                 View all →
               </Link>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              {PATIENT_TYPES.map(({ key, label }) => (
-                <div key={key} className="text-center p-3 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-800">{totalByType[key]}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+            <div className={`grid gap-3`} style={{ gridTemplateColumns: `repeat(${Math.min(fields.length, 4)}, minmax(0, 1fr))` }}>
+              {fields.map((f) => (
+                <div key={f.id} className="text-center p-3 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-800">{totalByField[f.id] ?? 0}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{f.label}</div>
                 </div>
               ))}
             </div>

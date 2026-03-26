@@ -1,9 +1,10 @@
-import { CollectionPeriod, Submission } from '@prisma/client';
+import { CollectionPeriod, PatientField, Submission, SubmissionValue } from '@prisma/client';
 
 type SubmissionWithRelations = Submission & {
   user: { username: string; displayName: string | null };
   hospital: { name: string; shortCode: string };
   collectionPeriod: { startedAt: Date; endedAt: Date | null };
+  values: (SubmissionValue & { field: PatientField })[];
 };
 
 function escapeCsvField(value: string | null | undefined): string {
@@ -22,8 +23,11 @@ function formatDate(date: Date | null | undefined): string {
 
 export function buildCsv(
   submissions: SubmissionWithRelations[],
-  period: CollectionPeriod
+  period: CollectionPeriod,
+  fields: PatientField[]
 ): string {
+  const fieldHeaders = fields.map((f) => f.key);
+
   const headers = [
     'period_id',
     'period_start',
@@ -34,27 +38,30 @@ export function buildCsv(
     'user_display_name',
     'hospital_name',
     'hospital_short_code',
-    'alcohol_related',
-    'virus',
-    'mci',
+    ...fieldHeaders,
     'notes',
   ];
 
-  const rows = submissions.map((s) => [
-    escapeCsvField(period.id),
-    escapeCsvField(formatDate(period.startedAt)),
-    escapeCsvField(formatDate(period.endedAt)),
-    escapeCsvField(s.id),
-    escapeCsvField(formatDate(s.submittedAt)),
-    escapeCsvField(s.user.username),
-    escapeCsvField(s.user.displayName),
-    escapeCsvField(s.hospital.name),
-    escapeCsvField(s.hospital.shortCode),
-    escapeCsvField(String(s.alcoholRelated)),
-    escapeCsvField(String(s.virus)),
-    escapeCsvField(String(s.mci)),
-    escapeCsvField(s.notes),
-  ]);
+  const rows = submissions.map((s) => {
+    const fieldValues = fields.map((f) => {
+      const sv = s.values.find((v) => v.fieldId === f.id);
+      return escapeCsvField(String(sv?.value ?? 0));
+    });
+
+    return [
+      escapeCsvField(period.id),
+      escapeCsvField(formatDate(period.startedAt)),
+      escapeCsvField(formatDate(period.endedAt)),
+      escapeCsvField(s.id),
+      escapeCsvField(formatDate(s.submittedAt)),
+      escapeCsvField(s.user.username),
+      escapeCsvField(s.user.displayName),
+      escapeCsvField(s.hospital.name),
+      escapeCsvField(s.hospital.shortCode),
+      ...fieldValues,
+      escapeCsvField(s.notes),
+    ];
+  });
 
   return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
 }

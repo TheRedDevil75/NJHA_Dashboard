@@ -30,30 +30,40 @@ router.get('/current', async (_req: Request, res: Response, next: NextFunction) 
       include: { intervalConfig: true },
     });
 
-    if (!period) return res.json({ period: null, stats: null });
+    if (!period) return res.json({ period: null, fields: [], stats: null });
 
-    const submissions = await prisma.submission.findMany({
-      where: { collectionPeriodId: period.id },
-      include: {
-        user: { select: { id: true, username: true, displayName: true } },
-        hospital: { select: { id: true, name: true, shortCode: true } },
-      },
-    });
+    const [submissions, fields] = await Promise.all([
+      prisma.submission.findMany({
+        where: { collectionPeriodId: period.id },
+        include: {
+          user: { select: { id: true, username: true, displayName: true } },
+          hospital: { select: { id: true, name: true, shortCode: true } },
+          values: { select: { fieldId: true, value: true } },
+        },
+      }),
+      prisma.patientField.findMany({
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      }),
+    ]);
 
-    const byType = {
-      ALCOHOL_RELATED: submissions.reduce((sum, s) => sum + s.alcoholRelated, 0),
-      VIRUS: submissions.reduce((sum, s) => sum + s.virus, 0),
-      MCI: submissions.reduce((sum, s) => sum + s.mci, 0),
-    };
+    // Aggregate totals by field key
+    const byType: Record<string, number> = {};
+    for (const field of fields) {
+      byType[field.key] = submissions.reduce((sum, s) => {
+        const v = s.values.find((sv) => sv.fieldId === field.id);
+        return sum + (v?.value ?? 0);
+      }, 0);
+    }
 
+    // Aggregate by hospital (sum of all field values)
     const byHospital: Record<string, { name: string; count: number }> = {};
     for (const s of submissions) {
       const key = s.hospital.id;
       if (!byHospital[key]) byHospital[key] = { name: s.hospital.name, count: 0 };
-      byHospital[key].count += s.alcoholRelated + s.virus + s.mci;
+      byHospital[key].count += s.values.reduce((sum, v) => sum + v.value, 0);
     }
 
-    // Top 5 users
+    // Top 5 users by submission count
     const userCounts: Record<string, { username: string; displayName: string | null; count: number }> = {};
     for (const s of submissions) {
       const key = s.user.id;
@@ -66,6 +76,7 @@ router.get('/current', async (_req: Request, res: Response, next: NextFunction) 
 
     res.json({
       period,
+      fields,
       stats: {
         total: submissions.length,
         byType,
@@ -85,12 +96,10 @@ router.get('/periods/:id/submissions', async (req: Request, res: Response, next:
     const limit = 50;
     const skip = (page - 1) * limit;
     const hospitalId = req.query.hospitalId as string | undefined;
-    const symptomType = req.query.symptomType as string | undefined;
     const userId = req.query.userId as string | undefined;
 
     const where: Record<string, unknown> = { collectionPeriodId: req.params.id };
     if (hospitalId) where.hospitalId = hospitalId;
-    if (symptomType) where.symptomType = symptomType;
     if (userId) where.userId = userId;
 
     const [submissions, total] = await Promise.all([
@@ -101,6 +110,7 @@ router.get('/periods/:id/submissions', async (req: Request, res: Response, next:
         include: {
           user: { select: { id: true, username: true, displayName: true } },
           hospital: { select: { id: true, name: true, shortCode: true } },
+          values: { include: { field: true }, orderBy: { field: { sortOrder: 'asc' } } },
         },
         orderBy: { submittedAt: 'desc' },
       }),
@@ -116,32 +126,34 @@ router.get('/periods/:id/submissions', async (req: Request, res: Response, next:
 // GET /api/admin/data/periods/:id/export
 router.get('/periods/:id/export', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const period = await prisma.collectionPeriod.findUnique({
-      where: { id: req.params.id },
-    });
+    const period = await prisma.collectionPeriod.findUnique({ where: { id: req.params.id } });
     if (!period) {
       res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Period not found.' } });
       return;
     }
 
     const hospitalId = req.query.hospitalId as string | undefined;
-    const symptomType = req.query.symptomType as string | undefined;
 
     const where: Record<string, unknown> = { collectionPeriodId: req.params.id };
     if (hospitalId) where.hospitalId = hospitalId;
-    if (symptomType) where.symptomType = symptomType;
 
-    const submissions = await prisma.submission.findMany({
-      where,
-      include: {
-        user: { select: { username: true, displayName: true } },
-        hospital: { select: { name: true, shortCode: true } },
-        collectionPeriod: { select: { startedAt: true, endedAt: true } },
-      },
-      orderBy: { submittedAt: 'asc' },
-    });
+    const [submissions, fields] = await Promise.all([
+      prisma.submission.findMany({
+        where,
+        include: {
+          user: { select: { username: true, displayName: true } },
+          hospital: { select: { name: true, shortCode: true } },
+          collectionPeriod: { select: { startedAt: true, endedAt: true } },
+          values: { include: { field: true }, orderBy: { field: { sortOrder: 'asc' } } },
+        },
+        orderBy: { submittedAt: 'asc' },
+      }),
+      prisma.patientField.findMany({
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      }),
+    ]);
 
-    const csv = buildCsv(submissions, period);
+    const csv = buildCsv(submissions, period, fields);
     const filename = `submissions_period_${req.params.id}_${new Date().toISOString().split('T')[0]}.csv`;
 
     res.setHeader('Content-Type', 'text/csv');

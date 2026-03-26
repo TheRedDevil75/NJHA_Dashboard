@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import {
   User, Hospital, CollectionPeriod, IntervalConfig,
-  Submission, ThemeConfig, AuditLog,
+  Submission, ThemeConfig, AuditLog, PatientField,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -79,13 +79,19 @@ export const themeApi = {
   },
 };
 
+// ── Fields ───────────────────────────────────────────────────
+export const fieldsApi = {
+  list: async () => {
+    const { data } = await http.get<{ fields: PatientField[] }>('/fields');
+    return data.fields;
+  },
+};
+
 // ── Submissions ──────────────────────────────────────────────
 export const submissionsApi = {
   submit: async (payload: {
     hospitalId: string;
-    alcoholRelated: number;
-    virus: number;
-    mci: number;
+    values: { fieldId: string; value: number }[];
     notes?: string;
   }) => {
     const { data } = await http.post<{ submission: Submission }>('/submissions', payload);
@@ -184,6 +190,7 @@ export const adminDataApi = {
   current: async () => {
     const { data } = await http.get<{
       period: CollectionPeriod | null;
+      fields: PatientField[];
       stats: {
         total: number;
         byType: Record<string, number>;
@@ -209,6 +216,25 @@ export const adminDataApi = {
     const token = localStorage.getItem(TOKEN_KEY);
     const query = new URLSearchParams({ ...(params ?? {}), token: token ?? '' });
     return `${BASE_URL}/admin/data/periods/${periodId}/export?${query}`;
+  },
+};
+
+// ── Admin: Patient Fields ─────────────────────────────────────
+export const adminFieldsApi = {
+  list: async () => {
+    const { data } = await http.get<{ fields: PatientField[] }>('/admin/fields');
+    return data.fields;
+  },
+  create: async (payload: { label: string; key: string; sortOrder?: number }) => {
+    const { data } = await http.post<{ field: PatientField }>('/admin/fields', payload);
+    return data.field;
+  },
+  update: async (id: string, payload: { label?: string; sortOrder?: number; isActive?: boolean }) => {
+    const { data } = await http.put<{ field: PatientField }>(`/admin/fields/${id}`, payload);
+    return data.field;
+  },
+  delete: async (id: string) => {
+    await http.delete(`/admin/fields/${id}`);
   },
 };
 

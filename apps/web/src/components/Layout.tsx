@@ -90,6 +90,7 @@ export function Layout({ children, showAdminNav = false }: LayoutProps) {
               { label: 'Hospitals', to: '/admin/hospitals' },
               { label: 'Intervals', to: '/admin/intervals' },
               { label: 'Appearance', to: '/admin/theme' },
+              { label: 'Patient Fields', to: '/admin/fields' },
               { label: 'Data & Export', to: '/admin/data' },
               { label: 'Audit Log', to: '/admin/audit' },
             ].map(({ label, to }) => (

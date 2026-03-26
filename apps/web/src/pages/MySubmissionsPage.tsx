@@ -56,11 +56,15 @@ export function MySubmissionsPage() {
                     {s.hospital?.name ?? '—'}
                     <span className="text-gray-400 font-normal"> ({s.hospital?.shortCode})</span>
                   </p>
-                  <div className="flex gap-3 mt-1 text-xs text-gray-600">
-                    <span>Alcohol Related: <strong>{s.alcoholRelated}</strong></span>
-                    <span>Virus: <strong>{s.virus}</strong></span>
-                    <span>MCI: <strong>{s.mci}</strong></span>
-                  </div>
+                  {s.values.length > 0 && (
+                    <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-600">
+                      {s.values.map((v) => (
+                        <span key={v.fieldId}>
+                          {v.field?.label ?? v.fieldId}: <strong>{v.value}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {s.notes && (
                     <p className="text-xs text-gray-500 mt-0.5 italic">"{s.notes}"</p>
                   )}
