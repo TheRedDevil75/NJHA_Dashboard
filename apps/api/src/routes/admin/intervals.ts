@@ -14,6 +14,7 @@ const intervalSchema = z.object({
   intervalValue: z.number().int().positive(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'startTime must be HH:MM'),
   timezone: z.string().min(1),
+  resetDays: z.array(z.number().int().min(0).max(6)).default([]),
 });
 
 // GET /api/admin/intervals

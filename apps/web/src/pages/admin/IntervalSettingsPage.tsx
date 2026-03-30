@@ -13,6 +13,7 @@ const intervalSchema = z.object({
   intervalValue: z.coerce.number().int().positive('Must be positive'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Format: HH:MM'),
   timezone: z.string().min(1),
+  resetDays: z.array(z.number().int().min(0).max(6)).default([]),
 });
 
 type IntervalForm = z.infer<typeof intervalSchema>;
@@ -21,6 +22,28 @@ const TIMEZONES = [
   'America/New_York', 'America/Chicago', 'America/Denver',
   'America/Los_Angeles', 'America/Phoenix', 'UTC',
 ];
+
+const DAYS = [
+  { label: 'Sun', value: 0 },
+  { label: 'Mon', value: 1 },
+  { label: 'Tue', value: 2 },
+  { label: 'Wed', value: 3 },
+  { label: 'Thu', value: 4 },
+  { label: 'Fri', value: 5 },
+  { label: 'Sat', value: 6 },
+];
+
+function formatSchedule(c: IntervalConfig): string {
+  if (c.resetDays.length > 0) {
+    const dayLabels = c.resetDays
+      .slice()
+      .sort((a, b) => a - b)
+      .map((d) => DAYS[d].label)
+      .join(', ');
+    return `Every ${dayLabels} at ${c.startTime} (${c.timezone})`;
+  }
+  return `Every ${c.intervalValue} ${c.intervalType.toLowerCase()}${c.intervalValue !== 1 ? 's' : ''} at ${c.startTime} (${c.timezone})`;
+}
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -48,8 +71,25 @@ export function IntervalSettingsPage() {
 
   const form = useForm<IntervalForm>({
     resolver: zodResolver(intervalSchema),
-    defaultValues: { intervalType: 'WEEKS', intervalValue: 1, startTime: '00:00', timezone: 'America/New_York' },
+    defaultValues: { intervalType: 'WEEKS', intervalValue: 1, startTime: '00:00', timezone: 'America/New_York', resetDays: [] },
   });
+
+  const intervalType = form.watch('intervalType');
+  const resetDays = form.watch('resetDays') ?? [];
+
+  // Clear resetDays when switching away from WEEKS
+  useEffect(() => {
+    if (intervalType !== 'WEEKS') {
+      form.setValue('resetDays', []);
+    }
+  }, [intervalType, form]);
+
+  // Auto-clear success message after 4 seconds
+  useEffect(() => {
+    if (!actionSuccess) return;
+    const timer = setTimeout(() => setActionSuccess(''), 4000);
+    return () => clearTimeout(timer);
+  }, [actionSuccess]);
 
   const loadConfigs = useCallback(async () => {
     setIsLoading(true);
@@ -65,11 +105,41 @@ export function IntervalSettingsPage() {
 
   useEffect(() => { loadConfigs(); }, [loadConfigs]);
 
+  const openCreate = () => {
+    form.reset({ intervalType: 'WEEKS', intervalValue: 1, startTime: '00:00', timezone: 'America/New_York', resetDays: [] });
+    setSelectedConfig(null);
+    setActionError('');
+    setActionSuccess('');
+    setModal('create');
+  };
+
+  const openEdit = (c: IntervalConfig) => {
+    setSelectedConfig(c);
+    form.reset({
+      name: c.name,
+      intervalType: c.intervalType,
+      intervalValue: c.intervalValue,
+      startTime: c.startTime,
+      timezone: c.timezone,
+      resetDays: c.resetDays ?? [],
+    });
+    setActionError('');
+    setActionSuccess('');
+    setModal('edit');
+  };
+
+  const toggleDay = (day: number) => {
+    const next = resetDays.includes(day)
+      ? resetDays.filter((d) => d !== day)
+      : [...resetDays, day];
+    form.setValue('resetDays', next, { shouldDirty: true });
+  };
+
   const onSubmit = async (data: IntervalForm) => {
     setActionError('');
     try {
       if (modal === 'create') {
-        await adminIntervalsApi.create(data as IntervalConfig);
+        await adminIntervalsApi.create(data);
       } else if (modal === 'edit' && selectedConfig) {
         await adminIntervalsApi.update(selectedConfig.id, data);
       }
@@ -125,11 +195,7 @@ export function IntervalSettingsPage() {
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Active Config</p>
                 <h2 className="text-lg font-semibold text-gray-800">{activeConfig.name}</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Every {activeConfig.intervalValue} {activeConfig.intervalType.toLowerCase()}
-                  {activeConfig.intervalValue !== 1 ? 's' : ''}, resetting at{' '}
-                  {activeConfig.startTime} ({activeConfig.timezone})
-                </p>
+                <p className="text-sm text-gray-500 mt-1">{formatSchedule(activeConfig)}</p>
               </div>
               <button
                 onClick={() => { setModal('reset'); setActionError(''); }}
@@ -150,11 +216,7 @@ export function IntervalSettingsPage() {
           <>
             <div className="flex justify-between items-center">
               <h2 className="text-base font-semibold text-gray-700">All Configs</h2>
-              <button
-                onClick={() => { form.reset({ intervalType: 'WEEKS', intervalValue: 1, startTime: '00:00', timezone: 'America/New_York' }); setSelectedConfig(null); setActionError(''); setModal('create'); }}
-                className="px-4 py-2 text-sm font-semibold text-white"
-                style={btnPrimary}
-              >
+              <button onClick={openCreate} className="px-4 py-2 text-sm font-semibold text-white" style={btnPrimary}>
                 + New Config
               </button>
             </div>
@@ -169,21 +231,12 @@ export function IntervalSettingsPage() {
                         <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Active</span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      Every {c.intervalValue} {c.intervalType.toLowerCase()}{c.intervalValue !== 1 ? 's' : ''} at {c.startTime} ({c.timezone})
-                    </p>
+                    <p className="text-sm text-gray-500 mt-0.5">{formatSchedule(c)}</p>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => { setSelectedConfig(c); form.reset({ name: c.name, intervalType: c.intervalType, intervalValue: c.intervalValue, startTime: c.startTime, timezone: c.timezone }); setActionError(''); setModal('edit'); }}
-                      className="text-xs font-medium text-blue-600 hover:underline"
-                    >
-                      Edit
-                    </button>
+                    <button onClick={() => openEdit(c)} className="text-xs font-medium text-blue-600 hover:underline">Edit</button>
                     {!c.isActive && (
-                      <button onClick={() => onActivate(c.id)} className="text-xs font-medium text-green-600 hover:underline">
-                        Set Active
-                      </button>
+                      <button onClick={() => onActivate(c.id)} className="text-xs font-medium text-green-600 hover:underline">Set Active</button>
                     )}
                   </div>
                 </div>
@@ -202,9 +255,10 @@ export function IntervalSettingsPage() {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Name *</label>
-              <input {...form.register('name')} className={inputClass} placeholder="e.g. Weekly Monday Reset" />
+              <input {...form.register('name')} className={inputClass} placeholder="e.g. Tue/Thu Weekly Reset" />
               {form.formState.errors.name && <p className="text-xs text-red-500 mt-1">{form.formState.errors.name.message}</p>}
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium mb-1">Interval Type</label>
@@ -215,22 +269,62 @@ export function IntervalSettingsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Value</label>
-                <input {...form.register('intervalValue')} type="number" min="1" className={inputClass} />
+                <label className="block text-sm font-medium mb-1">Every N {intervalType.toLowerCase()}s</label>
+                <input
+                  {...form.register('intervalValue')}
+                  type="number"
+                  min="1"
+                  disabled={intervalType === 'WEEKS' && resetDays.length > 0}
+                  className={`${inputClass} disabled:opacity-40 disabled:cursor-not-allowed`}
+                />
                 {form.formState.errors.intervalValue && <p className="text-xs text-red-500 mt-1">{form.formState.errors.intervalValue.message}</p>}
               </div>
             </div>
+
+            {/* Day picker — only for WEEKS */}
+            {intervalType === 'WEEKS' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">Reset on days <span className="text-gray-400 font-normal">(optional)</span></label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {DAYS.map(({ label, value }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => toggleDay(value)}
+                      className={`w-10 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                        resetDays.includes(value)
+                          ? 'border-blue-600 text-white'
+                          : 'border-gray-300 text-gray-600 hover:border-gray-400'
+                      }`}
+                      style={resetDays.includes(value) ? { backgroundColor: theme?.primaryColor ?? '#2563EB', borderColor: theme?.primaryColor ?? '#2563EB' } : {}}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {resetDays.length > 0 ? (
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Resets every {resetDays.slice().sort((a, b) => a - b).map((d) => DAYS[d].label).join(', ')} at the time below
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1.5">No days selected — resets every {form.watch('intervalValue') || 1} week(s) from start date</p>
+                )}
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium mb-1">Reset Time (HH:MM)</label>
-              <input {...form.register('startTime')} className={inputClass} placeholder="00:00" />
+              <label className="block text-sm font-medium mb-1">Reset Time</label>
+              <input {...form.register('startTime')} type="time" className={inputClass} />
               {form.formState.errors.startTime && <p className="text-xs text-red-500 mt-1">{form.formState.errors.startTime.message}</p>}
             </div>
+
             <div>
               <label className="block text-sm font-medium mb-1">Timezone</label>
               <select {...form.register('timezone')} className={inputClass}>
                 {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
               </select>
             </div>
+
             {actionError && <p className="text-xs text-red-600">{actionError}</p>}
             <button type="submit" disabled={form.formState.isSubmitting} className="w-full py-2.5 text-sm font-semibold text-white" style={btnPrimary}>
               {form.formState.isSubmitting ? 'Saving…' : modal === 'create' ? 'Create Config' : 'Save Changes'}

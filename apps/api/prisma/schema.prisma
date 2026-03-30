@@ -67,6 +67,7 @@ model IntervalConfig {
   intervalValue Int
   startTime     String       // HH:MM in 24h format
   timezone      String       @default("America/New_York")
+  resetDays     Int[]        // weekdays to reset on: 0=Sun…6=Sat. Empty = use intervalValue math
   isActive      Boolean      @default(false)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt

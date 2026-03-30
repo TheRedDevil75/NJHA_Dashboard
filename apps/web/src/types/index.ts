@@ -46,6 +46,7 @@ export interface IntervalConfig {
   intervalValue: number;
   startTime: string;
   timezone: string;
+  resetDays: number[];
   isActive: boolean;
   createdAt: string;
   _count?: { periods: number };

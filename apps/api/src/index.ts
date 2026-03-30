@@ -21,6 +21,9 @@ const app = express();
 const PORT = process.env.PORT ?? 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173';
 
+// ── Trust reverse proxy (nginx/Docker gateway) so req.ip reflects the real client IP ──
+app.set('trust proxy', 1);
+
 // ── Security middleware ────────────────────────────────────────
 app.use(helmet());
 app.use(
