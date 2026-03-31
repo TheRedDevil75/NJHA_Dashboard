@@ -1,3 +1,35 @@
+# Session Notes — March 31, 2026
+
+## What We Did
+
+### Cleaned up interval config creation flow
+- Extracted inline `onClick` handlers into named `openCreate()` and `openEdit()` functions
+- Removed incorrect `as IntervalConfig` type cast in the form submit handler
+- Switched `startTime` from a plain text input to `type="time"` (native browser time picker)
+- Added auto-clear for the success banner (fades after 4 seconds)
+- Success banner now clears immediately when opening a new modal
+
+### Added day-of-week scheduling to interval configs
+New feature: admins can now pick specific weekdays for weekly resets instead of a fixed N-week interval.
+
+**Backend**
+- Added `resetDays int[]` column to `interval_configs` table via new Prisma migration (`20260330000000_add_reset_days`)
+- Updated interval validation schema to accept `resetDays` (array of 0–6)
+- Rewrote scheduler logic: when `resetDays` is non-empty, calculates the next occurrence of any matching weekday at `startTime` in the config's timezone using the `Intl` API (no extra dependencies); falls back to old interval math when empty
+
+**Frontend**
+- Added `resetDays: number[]` to the `IntervalConfig` type
+- Day toggle buttons (Sun–Sat) appear in the create/edit modal when interval type is set to Weeks
+- "Every N weeks" field disables when days are selected (irrelevant)
+- Config list and active config card show human-readable schedule (e.g. "Every Tue, Thu at 12:00 (America/New_York)")
+
+### Deployed and pushed
+- Built and deployed frontend to `/var/www/njha-dashboard`
+- Restarted `njha-dashboard` PM2 process with new API build
+- Pushed all commits to `github.com/TheRedDevil75/NJHA_Dashboard`
+
+---
+
 # Session Notes — March 25, 2026
 
 ## What We Did
