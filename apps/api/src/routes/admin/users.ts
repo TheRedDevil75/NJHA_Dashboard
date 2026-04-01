@@ -204,6 +204,79 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
+// POST /api/admin/users/import
+router.post('/import', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rowSchema = z.object({
+      username: z.string().min(1).max(50),
+      password: passwordSchema,
+      displayName: z.string().max(100).optional(),
+      assignedHospitalCode: z.string().optional(),
+      role: z.enum(['USER', 'ADMIN']).default('USER'),
+    });
+
+    const bodySchema = z.object({ users: z.array(z.unknown()).min(1) });
+    const bodyParsed = bodySchema.safeParse(req.body);
+    if (!bodyParsed.success) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Expected { users: [...] }');
+    }
+
+    // Pre-load hospitals for code lookup
+    const hospitals = await prisma.hospital.findMany({ select: { id: true, shortCode: true } });
+    const hospitalByCode = new Map(hospitals.map((h) => [h.shortCode.toUpperCase(), h.id]));
+
+    const results: { row: number; username: string; status: 'created' | 'skipped'; reason?: string }[] = [];
+
+    for (let i = 0; i < bodyParsed.data.users.length; i++) {
+      const row = bodyParsed.data.users[i];
+      const parsed = rowSchema.safeParse(row);
+      if (!parsed.success) {
+        results.push({ row: i + 1, username: String((row as Record<string, unknown>)?.username ?? ''), status: 'skipped', reason: 'Validation failed' });
+        continue;
+      }
+      const { username, password, displayName, assignedHospitalCode, role } = parsed.data;
+      const normalizedUsername = username.toLowerCase();
+
+      const exists = await prisma.user.findUnique({ where: { username: normalizedUsername } });
+      if (exists) {
+        results.push({ row: i + 1, username, status: 'skipped', reason: 'Username already taken' });
+        continue;
+      }
+
+      let assignedHospitalId: string | null = null;
+      if (assignedHospitalCode) {
+        assignedHospitalId = hospitalByCode.get(assignedHospitalCode.toUpperCase()) ?? null;
+        if (!assignedHospitalId) {
+          results.push({ row: i + 1, username, status: 'skipped', reason: `Hospital code '${assignedHospitalCode}' not found` });
+          continue;
+        }
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      await prisma.user.create({
+        data: { username: normalizedUsername, passwordHash, displayName, assignedHospitalId, role },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user!.sub,
+          action: 'ACCOUNT_CREATED',
+          details: { importedUsername: normalizedUsername, via: 'bulk_import' },
+          ipAddress: req.ip,
+        },
+      });
+
+      results.push({ row: i + 1, username, status: 'created' });
+    }
+
+    const created = results.filter((r) => r.status === 'created').length;
+    const skipped = results.filter((r) => r.status === 'skipped').length;
+    res.status(201).json({ results, created, skipped });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/admin/users/:id/reset-password
 router.post('/:id/reset-password', async (req: Request, res: Response, next: NextFunction) => {
   try {

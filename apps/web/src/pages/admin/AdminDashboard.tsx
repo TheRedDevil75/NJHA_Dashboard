@@ -4,6 +4,8 @@ import { AdminLayout } from '../../components/Layout';
 import { adminDataApi } from '../../api/client';
 import { CollectionPeriod, PatientField } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
+import { SubmissionsOverTimeChart } from '../../components/SubmissionsOverTimeChart';
+import { ReporterActivityChart } from '../../components/ReporterActivityChart';
 
 interface Stats {
   total: number;
@@ -12,23 +14,41 @@ interface Stats {
   topUsers: { username: string; displayName: string | null; count: number }[];
 }
 
+interface ReporterActivity {
+  submitted: number;
+  notSubmitted: number;
+  byHospital: { name: string; hasSubmitted: boolean }[];
+}
+
 export function AdminDashboard() {
   const { theme } = useTheme();
   const [period, setPeriod] = useState<CollectionPeriod | null>(null);
   const [fields, setFields] = useState<PatientField[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [periods, setPeriods] = useState<CollectionPeriod[]>([]);
+  const [reporterActivity, setReporterActivity] = useState<ReporterActivity | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     adminDataApi.current()
-      .then(({ period, fields, stats }) => {
-        setPeriod(period);
-        setFields(fields);
-        setStats(stats);
+      .then((currentData) => {
+        setPeriod(currentData.period);
+        setFields(currentData.fields);
+        setStats(currentData.stats);
       })
       .catch(() => setError('Failed to load dashboard data.'))
       .finally(() => setIsLoading(false));
+
+    adminDataApi.periods()
+      .then((allPeriods) => {
+        setPeriods(allPeriods);
+      })
+      .catch(() => {/* non-critical: chart simply won't render */});
+
+    adminDataApi.reporterActivity()
+      .then(setReporterActivity)
+      .catch(() => {/* non-critical */});
   }, []);
 
   const QUICK_LINKS = [
@@ -81,6 +101,12 @@ export function AdminDashboard() {
               )}
             </div>
 
+            {/* Submissions over time chart */}
+            <SubmissionsOverTimeChart
+              periods={periods}
+              primaryColor={theme?.primaryColor ?? '#2563EB'}
+            />
+
             {/* Stats grid — dynamic per PatientField */}
             {stats && stats.total > 0 && fields.length > 0 && (
               <div
@@ -98,32 +124,14 @@ export function AdminDashboard() {
               </div>
             )}
 
-            {/* By hospital */}
-            {stats && stats.byHospital.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-                  Submissions by Hospital
-                </h2>
-                <div className="space-y-3">
-                  {stats.byHospital
-                    .sort((a, b) => b.count - a.count)
-                    .map(({ name, count }) => (
-                      <div key={name} className="flex items-center gap-3">
-                        <span className="text-sm text-gray-700 w-40 truncate">{name}</span>
-                        <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                          <div
-                            className="h-2.5 rounded-full"
-                            style={{
-                              width: `${Math.round((count / (stats.total || 1)) * 100)}%`,
-                              backgroundColor: theme?.primaryColor ?? '#2563EB',
-                            }}
-                          />
-                        </div>
-                        <span className="text-sm font-semibold text-gray-800 w-8 text-right">{count}</span>
-                      </div>
-                    ))}
-                </div>
-              </div>
+            {/* Reporter activity donut + hospital breakdown */}
+            {reporterActivity && (
+              <ReporterActivityChart
+                submitted={reporterActivity.submitted}
+                notSubmitted={reporterActivity.notSubmitted}
+                byHospital={reporterActivity.byHospital}
+                primaryColor={theme?.primaryColor ?? '#2563EB'}
+              />
             )}
 
             {/* Top users */}

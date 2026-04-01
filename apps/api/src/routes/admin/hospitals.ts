@@ -89,6 +89,58 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+// POST /api/admin/hospitals/import
+router.post('/import', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rowSchema = z.object({
+      name: z.string().min(1).max(200),
+      shortCode: z.string().min(1).max(6).regex(/^[A-Za-z0-9]+$/),
+      address: z.string().max(300).optional(),
+      city: z.string().max(100).optional(),
+      state: z.string().max(50).optional(),
+    });
+
+    const bodySchema = z.object({ hospitals: z.array(z.unknown()).min(1) });
+    const bodyParsed = bodySchema.safeParse(req.body);
+    if (!bodyParsed.success) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Expected { hospitals: [...] }');
+    }
+
+    const results: { row: number; name: string; status: 'created' | 'skipped'; reason?: string }[] = [];
+
+    for (let i = 0; i < bodyParsed.data.hospitals.length; i++) {
+      const row = bodyParsed.data.hospitals[i];
+      const parsed = rowSchema.safeParse(row);
+      if (!parsed.success) {
+        results.push({ row: i + 1, name: String((row as Record<string, unknown>)?.name ?? ''), status: 'skipped', reason: 'Validation failed' });
+        continue;
+      }
+      const { name, shortCode, address, city, state } = parsed.data;
+      const normalizedCode = shortCode.toUpperCase();
+      const [nameExists, codeExists] = await Promise.all([
+        prisma.hospital.findUnique({ where: { name } }),
+        prisma.hospital.findUnique({ where: { shortCode: normalizedCode } }),
+      ]);
+      if (nameExists) {
+        results.push({ row: i + 1, name, status: 'skipped', reason: 'Name already exists' });
+        continue;
+      }
+      if (codeExists) {
+        results.push({ row: i + 1, name, status: 'skipped', reason: 'Short code already exists' });
+        continue;
+      }
+      await prisma.hospital.create({ data: { name, shortCode: normalizedCode, address, city, state } });
+      results.push({ row: i + 1, name, status: 'created' });
+    }
+
+    const created = results.filter((r) => r.status === 'created').length;
+    const skipped = results.filter((r) => r.status === 'skipped').length;
+    res.status(201).json({ results, created, skipped });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /api/admin/hospitals/:id (soft deactivate)
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {

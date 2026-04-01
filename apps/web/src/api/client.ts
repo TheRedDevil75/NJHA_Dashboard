@@ -138,6 +138,10 @@ export const adminUsersApi = {
   resetPassword: async (id: string, newPassword: string) => {
     await http.post(`/admin/users/${id}/reset-password`, { newPassword });
   },
+  import: async (users: object[]) => {
+    const { data } = await http.post<{ results: { row: number; username: string; status: string; reason?: string }[]; created: number; skipped: number }>('/admin/users/import', { users });
+    return data;
+  },
 };
 
 // ── Admin: Hospitals ──────────────────────────────────────────
@@ -156,6 +160,10 @@ export const adminHospitalsApi = {
   },
   deactivate: async (id: string) => {
     await http.delete(`/admin/hospitals/${id}`);
+  },
+  import: async (hospitals: object[]) => {
+    const { data } = await http.post<{ results: { row: number; name: string; status: string; reason?: string }[]; created: number; skipped: number }>('/admin/hospitals/import', { hospitals });
+    return data;
   },
 };
 
@@ -210,6 +218,14 @@ export const adminDataApi = {
       page: number;
       totalPages: number;
     }>(`/admin/data/periods/${periodId}/submissions`, { params });
+    return data;
+  },
+  reporterActivity: async () => {
+    const { data } = await http.get<{
+      submitted: number;
+      notSubmitted: number;
+      byHospital: { name: string; hasSubmitted: boolean }[];
+    }>('/admin/data/reporter-activity');
     return data;
   },
   exportUrl: (periodId: string, params?: { hospitalId?: string; symptomType?: string }) => {

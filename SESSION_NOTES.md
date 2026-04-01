@@ -1,3 +1,42 @@
+# Session Notes — April 1, 2026
+
+## What We Did
+
+### Added Submissions Over Time chart to Admin Dashboard
+- Installed `recharts` (v3.8.1) as a frontend dependency
+- Created `apps/web/src/components/SubmissionsOverTimeChart.tsx` — a line chart showing submission counts per collection period over time, using the theme's primary color
+- Wired into `AdminDashboard`: fetches `/api/admin/data/periods` in parallel with existing current-period data; chart always renders (shows a placeholder message when no periods exist)
+- Data comes from `GET /api/admin/data/periods` which already included `_count.submissions` via Prisma
+
+### Deployment lesson: always copy dist to nginx root
+The app is served by nginx from `/var/www/njha-dashboard/`, not from `apps/web/dist/`. Running `npm run build:web` alone is not enough — built files must be copied over:
+
+```bash
+npm run build:web
+cp -r apps/web/dist/* /var/www/njha-dashboard/
+```
+
+Without the `cp` step, the browser keeps serving the old bundle regardless of hard refreshes. This caused significant confusion during debugging (the chart appeared not to render, when it was simply never deployed).
+
+### Feature backlog created
+Planned 8 UX/feature improvements for a future session. Saved to memory. See `FEATURE_BACKLOG.md` for full details.
+
+**Quick wins (no schema changes):**
+1. Duplicate submission warning for reporters
+2. Persistent confirmation summary after submit
+3. Last Login column in user management table
+4. Non-submitters report on admin dashboard
+
+**Medium features:**
+5. Reporter edit/delete own submissions (while period is active)
+6. Period-over-period delta comparison on admin dashboard
+7. Date-range CSV export across multiple periods
+
+**Larger feature (schema change):**
+8. Per-field min/max validation (adds `minValue`/`maxValue` to `PatientField`)
+
+---
+
 # Session Notes — March 31, 2026
 
 ## What We Did

@@ -89,6 +89,50 @@ router.get('/current', async (_req: Request, res: Response, next: NextFunction) 
   }
 });
 
+// GET /api/admin/data/reporter-activity
+router.get('/reporter-activity', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const period = await prisma.collectionPeriod.findFirst({ where: { isActive: true } });
+
+    // All active hospitals
+    const hospitals = await prisma.hospital.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+
+    if (!period) {
+      return res.json({
+        submitted: 0,
+        notSubmitted: hospitals.length,
+        byHospital: hospitals.map((h) => ({ name: h.name, hasSubmitted: false })),
+      });
+    }
+
+    // Distinct hospital IDs that have at least one submission in the current period
+    const submissions = await prisma.submission.findMany({
+      where: { collectionPeriodId: period.id },
+      select: { hospitalId: true },
+      distinct: ['hospitalId'],
+    });
+    const submittedHospitalIds = new Set(submissions.map((s) => s.hospitalId));
+
+    const submitted = hospitals.filter((h) => submittedHospitalIds.has(h.id)).length;
+    const notSubmitted = hospitals.length - submitted;
+
+    res.json({
+      submitted,
+      notSubmitted,
+      byHospital: hospitals.map((h) => ({
+        name: h.name,
+        hasSubmitted: submittedHospitalIds.has(h.id),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/admin/data/periods/:id/submissions
 router.get('/periods/:id/submissions', async (req: Request, res: Response, next: NextFunction) => {
   try {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AdminLayout } from '../../components/Layout';
 import { adminHospitalsApi, getErrorMessage } from '../../api/client';
 import { Hospital } from '../../types';
@@ -6,6 +6,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import * as XLSX from 'xlsx';
 
 const hospitalSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200),
@@ -31,14 +32,22 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+type ImportResult = { row: number; name: string; status: string; reason?: string };
+
 export function HospitalManagementPage() {
   const { theme } = useTheme();
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [modal, setModal] = useState<'create' | 'edit' | 'deactivate' | null>(null);
+  const [modal, setModal] = useState<'create' | 'edit' | 'deactivate' | 'import' | null>(null);
   const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
   const [actionError, setActionError] = useState('');
+  const [importRows, setImportRows] = useState<object[]>([]);
+  const [importPreview, setImportPreview] = useState<Record<string, string>[]>([]);
+  const [importResults, setImportResults] = useState<ImportResult[] | null>(null);
+  const [importSummary, setImportSummary] = useState<{ created: number; skipped: number } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<HospitalForm>({ resolver: zodResolver(hospitalSchema) });
 
@@ -96,6 +105,59 @@ export function HospitalManagementPage() {
     }
   };
 
+  const openImport = () => {
+    setImportRows([]);
+    setImportPreview([]);
+    setImportResults(null);
+    setImportSummary(null);
+    setActionError('');
+    setModal('import');
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setActionError('');
+    setImportResults(null);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target?.result, { type: 'binary' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
+        if (json.length === 0) { setActionError('No rows found in the file.'); return; }
+        const mapped = json.map((r) => ({
+          name: String(r['Hospital Name'] ?? r['name'] ?? r['Name'] ?? '').trim(),
+          shortCode: String(r['Short Code'] ?? r['shortCode'] ?? r['ShortCode'] ?? r['Code'] ?? '').trim(),
+          address: String(r['Address'] ?? r['address'] ?? '').trim() || undefined,
+          city: String(r['City'] ?? r['city'] ?? '').trim() || undefined,
+          state: String(r['State'] ?? r['state'] ?? '').trim() || undefined,
+        }));
+        setImportRows(mapped);
+        setImportPreview(json.slice(0, 5));
+      } catch {
+        setActionError('Failed to read file. Ensure it is a valid Excel or CSV file.');
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleImportSubmit = async () => {
+    if (importRows.length === 0) { setActionError('No data to import.'); return; }
+    setIsImporting(true);
+    setActionError('');
+    try {
+      const result = await adminHospitalsApi.import(importRows);
+      setImportResults(result.results);
+      setImportSummary({ created: result.created, skipped: result.skipped });
+      if (result.created > 0) loadHospitals();
+    } catch (err) {
+      setActionError(getErrorMessage(err));
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const inputClass = 'w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2';
   const btnPrimary = {
     backgroundColor: theme?.primaryColor ?? '#2563EB',
@@ -147,9 +209,14 @@ export function HospitalManagementPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold" style={{ color: theme?.textColor }}>Hospital Management</h1>
-          <button onClick={openCreate} className="px-4 py-2 text-sm font-semibold text-white" style={btnPrimary}>
-            + Add Hospital
-          </button>
+          <div className="flex gap-2">
+            <button onClick={openImport} className="px-4 py-2 text-sm font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700">
+              Import from Excel
+            </button>
+            <button onClick={openCreate} className="px-4 py-2 text-sm font-semibold text-white" style={btnPrimary}>
+              + Add Hospital
+            </button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -204,6 +271,71 @@ export function HospitalManagementPage() {
       {(modal === 'create' || modal === 'edit') && (
         <Modal title={modal === 'create' ? 'Add Hospital' : `Edit: ${selectedHospital?.name}`} onClose={() => setModal(null)}>
           <HospitalForm />
+        </Modal>
+      )}
+
+      {modal === 'import' && (
+        <Modal title="Import Hospitals from Excel" onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Upload an Excel (.xlsx) or CSV file with columns: <strong>Hospital Name</strong>, <strong>Short Code</strong>, Address, City, State.
+            </p>
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                const ws = XLSX.utils.aoa_to_sheet([['Hospital Name', 'Short Code', 'Address', 'City', 'State'], ['Example Hospital', 'EXHSP', '123 Main St', 'Newark', 'NJ']]);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Hospitals');
+                XLSX.writeFile(wb, 'hospitals_template.xlsx');
+              }}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Download template
+            </a>
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2" />
+            {importPreview.length > 0 && !importResults && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{importRows.length} row(s) detected — preview (first 5):</p>
+                <div className="overflow-x-auto border rounded text-xs">
+                  <table className="w-full">
+                    <thead className="bg-gray-50"><tr>{Object.keys(importPreview[0]).map((k) => <th key={k} className="px-2 py-1 text-left font-medium text-gray-500">{k}</th>)}</tr></thead>
+                    <tbody>{importPreview.map((row, i) => <tr key={i} className="border-t">{Object.values(row).map((v, j) => <td key={j} className="px-2 py-1 text-gray-700">{v}</td>)}</tr>)}</tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {importResults && importSummary && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  <span className="text-green-700">{importSummary.created} created</span>
+                  {importSummary.skipped > 0 && <span className="text-yellow-700 ml-2">{importSummary.skipped} skipped</span>}
+                </p>
+                {importResults.filter((r) => r.status === 'skipped').length > 0 && (
+                  <div className="max-h-32 overflow-y-auto text-xs space-y-1">
+                    {importResults.filter((r) => r.status === 'skipped').map((r) => (
+                      <p key={r.row} className="text-yellow-700">Row {r.row} ({r.name}): {r.reason}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+            {!importResults ? (
+              <button
+                onClick={handleImportSubmit}
+                disabled={importRows.length === 0 || isImporting}
+                className="w-full py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                style={btnPrimary}
+              >
+                {isImporting ? 'Importing…' : `Import ${importRows.length > 0 ? importRows.length + ' hospitals' : ''}`}
+              </button>
+            ) : (
+              <button onClick={() => setModal(null)} className="w-full py-2.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                Close
+              </button>
+            )}
+          </div>
         </Modal>
       )}
 

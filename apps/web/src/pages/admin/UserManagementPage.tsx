@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AdminLayout } from '../../components/Layout';
 import { adminUsersApi, adminHospitalsApi, getErrorMessage } from '../../api/client';
 import { User, Hospital } from '../../types';
@@ -6,6 +6,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import * as XLSX from 'xlsx';
 
 const createSchema = z.object({
   username: z.string().min(1).max(50),
@@ -29,6 +30,7 @@ const resetPwSchema = z.object({
 type CreateForm = z.infer<typeof createSchema>;
 type EditForm = z.infer<typeof editSchema>;
 type ResetPwForm = z.infer<typeof resetPwSchema>;
+type ImportResult = { row: number; username: string; status: string; reason?: string };
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -54,10 +56,16 @@ export function UserManagementPage() {
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [modal, setModal] = useState<'create' | 'edit' | 'resetPw' | 'deactivate' | null>(null);
+  const [modal, setModal] = useState<'create' | 'edit' | 'resetPw' | 'deactivate' | 'import' | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
+  const [importRows, setImportRows] = useState<object[]>([]);
+  const [importPreview, setImportPreview] = useState<Record<string, string>[]>([]);
+  const [importResults, setImportResults] = useState<ImportResult[] | null>(null);
+  const [importSummary, setImportSummary] = useState<{ created: number; skipped: number } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const createForm = useForm<CreateForm>({ resolver: zodResolver(createSchema), defaultValues: { role: 'USER' } });
   const editForm = useForm<EditForm>({ resolver: zodResolver(editSchema) });
@@ -153,6 +161,59 @@ export function UserManagementPage() {
     }
   };
 
+  const openImport = () => {
+    setImportRows([]);
+    setImportPreview([]);
+    setImportResults(null);
+    setImportSummary(null);
+    setActionError('');
+    setModal('import');
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setActionError('');
+    setImportResults(null);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target?.result, { type: 'binary' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
+        if (json.length === 0) { setActionError('No rows found in the file.'); return; }
+        const mapped = json.map((r) => ({
+          username: String(r['Username'] ?? r['username'] ?? '').trim(),
+          password: String(r['Password'] ?? r['password'] ?? '').trim(),
+          displayName: String(r['Display Name'] ?? r['displayName'] ?? '').trim() || undefined,
+          assignedHospitalCode: String(r['Hospital Code'] ?? r['hospitalCode'] ?? r['Hospital'] ?? '').trim() || undefined,
+          role: (['USER', 'ADMIN'].includes(String(r['Role'] ?? r['role'] ?? '').toUpperCase()) ? String(r['Role'] ?? r['role']).toUpperCase() : 'USER') as 'USER' | 'ADMIN',
+        }));
+        setImportRows(mapped);
+        setImportPreview(json.slice(0, 5));
+      } catch {
+        setActionError('Failed to read file. Ensure it is a valid Excel or CSV file.');
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleImportSubmit = async () => {
+    if (importRows.length === 0) { setActionError('No data to import.'); return; }
+    setIsImporting(true);
+    setActionError('');
+    try {
+      const result = await adminUsersApi.import(importRows);
+      setImportResults(result.results);
+      setImportSummary({ created: result.created, skipped: result.skipped });
+      if (result.created > 0) loadData();
+    } catch (err) {
+      setActionError(getErrorMessage(err));
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const inputClass = 'w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2';
   const btnPrimary = {
     backgroundColor: theme?.primaryColor ?? '#2563EB',
@@ -165,13 +226,18 @@ export function UserManagementPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center flex-wrap gap-4">
           <h1 className="text-2xl font-bold" style={{ color: theme?.textColor }}>User Management</h1>
-          <button
-            onClick={() => { setModal('create'); setActionError(''); createForm.reset({ role: 'USER' }); }}
-            className="px-4 py-2 text-sm font-semibold text-white"
-            style={btnPrimary}
-          >
-            + Add User
-          </button>
+          <div className="flex gap-2">
+            <button onClick={openImport} className="px-4 py-2 text-sm font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700">
+              Import from Excel
+            </button>
+            <button
+              onClick={() => { setModal('create'); setActionError(''); createForm.reset({ role: 'USER' }); }}
+              className="px-4 py-2 text-sm font-semibold text-white"
+              style={btnPrimary}
+            >
+              + Add User
+            </button>
+          </div>
         </div>
 
         {actionSuccess && (
@@ -259,6 +325,72 @@ export function UserManagementPage() {
           </>
         )}
       </div>
+
+      {/* Import modal */}
+      {modal === 'import' && (
+        <Modal title="Import Users from Excel" onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Upload an Excel (.xlsx) or CSV file with columns: <strong>Username</strong>, <strong>Password</strong>, Display Name, Hospital Code, Role (USER or ADMIN).
+            </p>
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                const ws = XLSX.utils.aoa_to_sheet([['Username', 'Password', 'Display Name', 'Hospital Code', 'Role'], ['jsmith', 'Password1', 'John Smith', 'GRMH', 'USER']]);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Users');
+                XLSX.writeFile(wb, 'users_template.xlsx');
+              }}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Download template
+            </a>
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2" />
+            {importPreview.length > 0 && !importResults && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{importRows.length} row(s) detected — preview (first 5):</p>
+                <div className="overflow-x-auto border rounded text-xs">
+                  <table className="w-full">
+                    <thead className="bg-gray-50"><tr>{Object.keys(importPreview[0]).map((k) => <th key={k} className="px-2 py-1 text-left font-medium text-gray-500">{k}</th>)}</tr></thead>
+                    <tbody>{importPreview.map((row, i) => <tr key={i} className="border-t">{Object.values(row).map((v, j) => <td key={j} className="px-2 py-1 text-gray-700">{j === 1 ? '••••••••' : v}</td>)}</tr>)}</tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {importResults && importSummary && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  <span className="text-green-700">{importSummary.created} created</span>
+                  {importSummary.skipped > 0 && <span className="text-yellow-700 ml-2">{importSummary.skipped} skipped</span>}
+                </p>
+                {importResults.filter((r) => r.status === 'skipped').length > 0 && (
+                  <div className="max-h-32 overflow-y-auto text-xs space-y-1">
+                    {importResults.filter((r) => r.status === 'skipped').map((r) => (
+                      <p key={r.row} className="text-yellow-700">Row {r.row} ({r.username}): {r.reason}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+            {!importResults ? (
+              <button
+                onClick={handleImportSubmit}
+                disabled={importRows.length === 0 || isImporting}
+                className="w-full py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                style={btnPrimary}
+              >
+                {isImporting ? 'Importing…' : `Import ${importRows.length > 0 ? importRows.length + ' users' : ''}`}
+              </button>
+            ) : (
+              <button onClick={() => setModal(null)} className="w-full py-2.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                Close
+              </button>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {/* Create modal */}
       {modal === 'create' && (

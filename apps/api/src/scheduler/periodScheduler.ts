@@ -88,12 +88,14 @@ export async function rotatePeriod(triggeredByUserId?: string, ipAddress?: strin
     include: { intervalConfig: true },
   });
 
+  // Always use the currently active config for the incoming period
+  const activeConfig = await prisma.intervalConfig.findFirst({ where: { isActive: true } });
+  if (!activeConfig) {
+    console.warn('[Scheduler] No active interval config found. Cannot create a period.');
+    return;
+  }
+
   if (!activePeriod) {
-    const activeConfig = await prisma.intervalConfig.findFirst({ where: { isActive: true } });
-    if (!activeConfig) {
-      console.warn('[Scheduler] No active interval config found. Cannot create a period.');
-      return;
-    }
     await prisma.collectionPeriod.create({
       data: { intervalConfigId: activeConfig.id, startedAt: new Date(), isActive: true },
     });
@@ -108,7 +110,7 @@ export async function rotatePeriod(triggeredByUserId?: string, ipAddress?: strin
       data: { endedAt: now, isActive: false, archivedAt: now },
     }),
     prisma.collectionPeriod.create({
-      data: { intervalConfigId: activePeriod.intervalConfigId, startedAt: now, isActive: true },
+      data: { intervalConfigId: activeConfig.id, startedAt: now, isActive: true },
     }),
   ]);
 
