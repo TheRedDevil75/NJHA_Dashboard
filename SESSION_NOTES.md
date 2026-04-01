@@ -1,3 +1,47 @@
+# Session Notes — April 2, 2026
+
+## What We Did
+
+### Replaced "Submissions by Hospital" chart with Hospital Activity donut
+
+**Backend**
+- Added `GET /api/admin/data/reporter-activity` to `apps/api/src/routes/admin/data.ts`
+- Counts active hospitals (not individual users) and checks which have at least one submission in the current period via `distinct: ['hospitalId']`
+- Returns `{ submitted, notSubmitted, byHospital: { name, hasSubmitted }[] }`
+
+**Frontend**
+- Created `apps/web/src/components/ReporterActivityChart.tsx` — Recharts donut (submitted vs. not yet submitted) + scrollable per-hospital status table with "Done" (green) / "Not In" (amber) badges
+- Added `adminDataApi.reporterActivity()` to `apps/web/src/api/client.ts`
+- Wired into `AdminDashboard.tsx` — fetched in parallel with existing data calls; replaces the old horizontal progress-bar "by hospital" card
+
+**Bugs fixed during session**
+- Chart was silently hidden when `total === 0` — removed early return, now always renders with a grey "No hospitals" state
+- Denominator was counting reporter users instead of hospitals — fixed to count distinct hospitals
+- Chart was slightly cut off at the top — increased `ResponsiveContainer` height and shifted `cy` to `45%`
+- "Pending" column label was confusing — replaced two numeric columns with a single "Status" column
+
+### Deployment issue identified and logged
+- Dashboard API runs on port **3002**, not 3001
+- `njha-dashboard` is this project's PM2 process; `njhcc-server` (port 3001) is a completely separate app — do not restart it
+- Memory updated to record this permanently
+
+### Security review + hardening
+Ran a full security review. Key finding: `.env` was **not** in git (false alarm from the review tool). All other issues fixed:
+
+| Severity | Fix |
+|---|---|
+| High | Server now exits at startup if `JWT_SECRET` is missing or < 32 chars |
+| High/Med | `FRONTEND_URL` validated as a valid URL at startup |
+| High | Audit log `from`/`to` params now validated with Zod `datetime()` — invalid dates return 400 |
+| Low | Audit `action` param validated against a strict enum of known action types |
+| Medium | Rate limiter added to `POST /api/admin/users/import` (50 req/hr) |
+| Medium | `logoUrl` in theme now restricted to `https://` or relative URLs only |
+| Low | CSV export filename sanitized — `req.params.id` stripped to alphanumeric/dash/underscore |
+
+**Remaining known issue:** JWT stored in `localStorage` (XSS risk). Migrating to httpOnly cookies is a larger refactor — deferred.
+
+---
+
 # Session Notes — April 1, 2026
 
 ## What We Did

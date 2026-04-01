@@ -1,6 +1,25 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { requireAdmin } from '../../middleware/auth';
+import { ApiError } from '../../middleware/errorHandler';
+
+const AUDIT_ACTIONS = [
+  'LOGIN_SUCCESS', 'LOGIN_FAILURE', 'LOGOUT', 'PASSWORD_CHANGED',
+  'PERIOD_ROTATED', 'SUBMISSION_CREATED', 'SUBMISSION_DELETED',
+  'USER_CREATED', 'USER_UPDATED', 'USER_DEACTIVATED',
+  'HOSPITAL_CREATED', 'HOSPITAL_UPDATED', 'HOSPITAL_DEACTIVATED',
+  'FIELD_CREATED', 'FIELD_UPDATED', 'FIELD_DELETED',
+  'THEME_UPDATED', 'INTERVAL_CREATED', 'INTERVAL_UPDATED', 'INTERVAL_ACTIVATED',
+] as const;
+
+const auditQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  action: z.enum(AUDIT_ACTIONS).optional(),
+  userId: z.string().optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+});
 
 const router = Router();
 router.use(requireAdmin);
@@ -8,13 +27,15 @@ router.use(requireAdmin);
 // GET /api/admin/audit?page=1&action=&userId=&from=&to=
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const page = parseInt(String(req.query.page ?? '1'));
+    const parsed = auditQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid query parameters.', parsed.error.flatten());
+    }
+
+    const { page: rawPage, action, userId, from, to } = parsed.data;
+    const page = rawPage ?? 1;
     const limit = 50;
     const skip = (page - 1) * limit;
-    const action = req.query.action as string | undefined;
-    const userId = req.query.userId as string | undefined;
-    const from = req.query.from as string | undefined;
-    const to = req.query.to as string | undefined;
 
     const where: Record<string, unknown> = {};
     if (action) where.action = action;

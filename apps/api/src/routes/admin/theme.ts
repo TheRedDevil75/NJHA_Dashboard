@@ -8,7 +8,10 @@ const router = Router();
 
 const themeSchema = z.object({
   appName: z.string().min(1).max(100).optional(),
-  logoUrl: z.string().url().nullable().optional(),
+  logoUrl: z.string().url().refine(
+    (url) => url.startsWith('https://') || url.startsWith('/'),
+    'Logo URL must be an HTTPS or relative URL.'
+  ).nullable().optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   backgroundColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),

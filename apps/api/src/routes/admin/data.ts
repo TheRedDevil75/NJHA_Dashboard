@@ -198,7 +198,8 @@ router.get('/periods/:id/export', async (req: Request, res: Response, next: Next
     ]);
 
     const csv = buildCsv(submissions, period, fields);
-    const filename = `submissions_period_${req.params.id}_${new Date().toISOString().split('T')[0]}.csv`;
+    const safeId = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '');
+    const filename = `submissions_period_${safeId}_${new Date().toISOString().split('T')[0]}.csv`;
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

@@ -17,9 +17,21 @@ import adminFieldsRouter from './routes/admin/fields';
 import { errorHandler } from './middleware/errorHandler';
 import { startScheduler } from './scheduler/periodScheduler';
 
+// ── Startup env validation ────────────────────────────────────
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret || jwtSecret.length < 32) {
+  console.error('FATAL: JWT_SECRET must be set and at least 32 characters long.');
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT ?? 3001;
-const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+const rawFrontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+try { new URL(rawFrontendUrl); } catch {
+  console.error(`FATAL: FRONTEND_URL is not a valid URL: ${rawFrontendUrl}`);
+  process.exit(1);
+}
+const FRONTEND_URL = rawFrontendUrl;
 
 // ── Trust reverse proxy (nginx/Docker gateway) so req.ip reflects the real client IP ──
 app.set('trust proxy', 1);
@@ -42,17 +54,26 @@ app.use((req, _res, next) => {
   next();
 });
 
-// ── Rate limiting on auth ──────────────────────────────────────
+// ── Rate limiting ──────────────────────────────────────────────
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many login attempts. Try again later.' } },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
+const adminWriteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 50,
+  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many requests. Try again later.' } },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ── Routes ────────────────────────────────────────────────────
 app.use('/api/auth/login', authLimiter);
+app.use('/api/admin/users/import', adminWriteLimiter);
 app.use('/api/auth', authRouter);
 app.use('/api/submissions', submissionsRouter);
 app.use('/api/fields', fieldsRouter);
